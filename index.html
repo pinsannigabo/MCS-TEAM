@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microstent Geometry Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --win:#ECECEC;
+    --panel:#F6F6F6;
+    --panel-2:#EFEFEF;
+    --tree-bg:#FBFBFB;
+    --border:#C7CBCF;
+    --border-strong:#AEB4BA;
+    --text:#1E2328;
+    --muted:#5B6570;
+    --muted-2:#8A929B;
+    --accent:#0F5FA6;
+    --accent-dark:#0B4A82;
+    --accent-bg:#DCEBF8;
+    --accent-bg-2:#CFE3F5;
+    --field-bg:#FFFFFF;
+    --ok:#2E7D46;
+    --graphics-bg:#E7EAED;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--win);color:var(--text);
+    font-family:'Inter','Segoe UI',Tahoma,Arial,sans-serif; overflow:hidden; font-size:13px;}
+  .app{display:flex; flex-direction:column; height:100vh;}
+
+  /* ---- Ribbon ---- */
+  .ribbon{
+    flex-shrink:0; background:linear-gradient(180deg,#FFFFFF,#F1F2F3);
+    border-bottom:1px solid var(--border-strong);
+  }
+  .ribbon-top{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 14px 6px; border-bottom:1px solid var(--border);
+  }
+  .brand{display:flex; align-items:center; gap:9px;}
+  .brand .logo{
+    width:22px; height:22px; border-radius:3px; background:var(--accent);
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .brand .logo svg{ width:13px; height:13px; stroke:#fff; fill:none; stroke-width:2; }
+  .brand h1{ font-size:14px; font-weight:700; margin:0; color:var(--text); letter-spacing:0.01em;}
+  .brand .sub{ font-size:11px; color:var(--muted); margin-left:6px; }
+  .ribbon-top .meta{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-2);}
+
+  .ribbon-tabs{ display:flex; align-items:stretch; padding:0 10px; gap:2px; }
+  .ribbon-tab{
+    padding:6px 14px; font-size:12px; color:var(--muted); cursor:default;
+    border:1px solid transparent; border-bottom:none; margin-bottom:-1px;
+  }
+  .ribbon-tab.active{
+    background:var(--panel); color:var(--accent-dark); font-weight:600;
+    border:1px solid var(--border); border-bottom:1px solid var(--panel); border-radius:3px 3px 0 0;
+  }
+  .ribbon-actions{
+    display:flex; align-items:center; gap:6px; padding:8px 10px; background:var(--panel);
+    border-bottom:1px solid var(--border-strong);
+  }
+  .ribbon-btn{
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    background:transparent; border:1px solid transparent; border-radius:4px;
+    padding:5px 10px; cursor:pointer; color:var(--text); font-size:10.5px; font-weight:500;
+    transition:background .1s, border-color .1s;
+  }
+  .ribbon-btn:hover{ background:var(--accent-bg); border-color:var(--border); }
+  .ribbon-btn svg{ width:19px; height:19px; stroke:var(--accent-dark); fill:none; stroke-width:1.7; }
+  .ribbon-btn.primary{ background:var(--accent); color:#fff; }
+  .ribbon-btn.primary svg{ stroke:#fff; }
+  .ribbon-btn.primary:hover{ background:var(--accent-dark); }
+  .ribbon-sep{ width:1px; align-self:stretch; background:var(--border); margin:2px 4px; }
+
+  /* ---- Body layout: tree | settings | graphics ---- */
+  .main{ flex:1; display:flex; min-height:0; }
+
+  .tree-pane{
+    width:196px; flex-shrink:0; background:var(--tree-bg); border-right:1px solid var(--border);
+    display:flex; flex-direction:column;
+  }
+  .pane-header{
+    padding:7px 10px; font-size:11px; font-weight:700; color:var(--muted);
+    text-transform:uppercase; letter-spacing:0.05em; background:var(--panel-2);
+    border-bottom:1px solid var(--border);
+  }
+  .tree{ padding:6px 0; overflow-y:auto; flex:1; }
+  .tree-node{
+    display:flex; align-items:center; gap:5px; padding:4px 8px 4px 14px;
+    font-size:12.5px; color:var(--text); cursor:default; user-select:none;
+  }
+  .tree-node .caret{ width:10px; font-size:9px; color:var(--muted-2); }
+  .tree-node.group{ font-weight:600; }
+  .tree-leaf{
+    display:flex; align-items:center; gap:6px; padding:5px 8px 5px 30px;
+    font-size:12.5px; color:var(--text); cursor:pointer; border-radius:2px; margin:0 4px;
+  }
+  .tree-leaf svg{ width:14px; height:14px; stroke:var(--muted); fill:none; stroke-width:1.6; flex-shrink:0;}
+  .tree-leaf:hover{ background:var(--accent-bg); }
+  .tree-leaf.active{ background:var(--accent-bg-2); color:var(--accent-dark); font-weight:600; }
+  .tree-leaf.active svg{ stroke:var(--accent-dark); }
+
+  .settings-pane{
+    width:308px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border);
+    display:flex; flex-direction:column; overflow-y:auto;
+  }
+  .settings-crumb{
+    padding:8px 12px; font-size:10.5px; color:var(--muted-2); font-family:'JetBrains Mono',monospace;
+    border-bottom:1px solid var(--border); background:var(--panel-2);
+  }
+  .settings-crumb b{ color:var(--accent-dark); }
+  .settings-body{ padding:12px; flex:1; }
+  .field-group-label{
+    font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
+    letter-spacing:0.04em; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--border);
+  }
+  .field-group-label:first-child{ margin-top:0; }
+
+  .param-row{ margin-bottom:12px; }
+  .param-row .flabel{ font-size:12px; color:var(--text); display:block; margin-bottom:4px; font-weight:500; }
+  .field-inline{ display:flex; align-items:center; gap:8px; }
+  .num-box{
+    width:78px; flex-shrink:0; background:var(--field-bg); border:1px solid var(--border-strong);
+    border-radius:3px; padding:4px 6px; font-family:'JetBrains Mono',monospace; font-size:12px;
+    color:var(--text); text-align:right;
+  }
+  .num-box:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg-2); }
+  .unit-tag{ font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; width:22px; }
+  input[type=range]{
+    -webkit-appearance:none; flex:1; height:4px; background:var(--border-strong);
+    border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    background:var(--accent); cursor:pointer; border:2px solid #fff;
+    box-shadow:0 0 0 1px var(--accent-dark);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:11px; height:11px; border-radius:50%; background:var(--accent);
+    border:2px solid #fff; cursor:pointer;
+  }
+
+  .derived-table{
+    margin-top:2px; border:1px solid var(--border); border-radius:3px; overflow:hidden;
+    background:var(--field-bg);
+  }
+  .derived-table div{
+    display:flex; justify-content:space-between; padding:5px 9px; font-size:11.5px;
+    border-bottom:1px solid var(--border); font-family:'JetBrains Mono',monospace;
+  }
+  .derived-table div:last-child{ border-bottom:none; }
+  .derived-table span.k{ color:var(--muted); }
+  .derived-table span.v{ color:var(--accent-dark); font-weight:600; }
+
+  .note{
+    margin-top:14px; padding:9px 10px; background:#FFF9E6; border:1px solid #E8D68A;
+    border-radius:3px; font-size:11px; color:#6B5A1A; line-height:1.5;
+  }
+
+  /* ---- Graphics window ---- */
+  .graphics-pane{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .graphics-toolbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:6px 12px; background:var(--panel); border-bottom:1px solid var(--border);
+    font-size:11px; color:var(--muted);
+  }
+  .graphics-toolbar .gt-left{ display:flex; align-items:center; gap:14px; }
+  .graphics-toolbar b{ color:var(--text); }
+  .viewer{ flex:1; position:relative; background:
+      radial-gradient(circle at 32% 24%, #F2F4F6 0%, var(--graphics-bg) 75%);
+  }
+  #canvas-host{ position:absolute; inset:0; }
+  .viewer-hint{
+    position:absolute; bottom:10px; left:14px; font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; color:var(--muted); pointer-events:none;
+    background:rgba(255,255,255,0.7); padding:2px 6px; border-radius:2px;
+  }
+  .axis-badge{
+    position:absolute; bottom:10px; right:14px; font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; color:var(--muted); text-align:right; pointer-events:none;
+    background:rgba(255,255,255,0.7); padding:2px 6px; border-radius:2px;
+  }
+  .axis-badge b{ color:var(--accent-dark); }
+
+  .toast{
+    position:absolute; top:12px; right:14px; background:#fff;
+    border:1px solid var(--ok); color:var(--ok);
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:7px 11px;
+    border-radius:3px; opacity:0; transform:translateY(-6px);
+    transition:opacity .2s, transform .2s; pointer-events:none;
+    box-shadow:0 2px 6px rgba(0,0,0,0.12);
+  }
+  .toast.show{ opacity:1; transform:translateY(0); }
+
+  /* ---- Bottom log strip (COMSOL Messages/Progress/Log tabs) ---- */
+  .bottom-strip{
+    flex-shrink:0; height:88px; background:#FCFCFC; border-top:1px solid var(--border-strong);
+    display:flex; flex-direction:column;
+  }
+  .bottom-tabs{
+    display:flex; gap:2px; padding:4px 8px 0; background:var(--panel-2); border-bottom:1px solid var(--border);
+  }
+  .bottom-tab{
+    padding:4px 12px; font-size:11px; color:var(--muted); border:1px solid transparent; border-bottom:none;
+  }
+  .bottom-tab.active{
+    background:#FCFCFC; color:var(--accent-dark); font-weight:600;
+    border:1px solid var(--border); border-bottom:1px solid #FCFCFC; border-radius:3px 3px 0 0;
+  }
+  .log-body{
+    flex:1; padding:7px 12px; font-family:'JetBrains Mono',monospace; font-size:11px;
+    color:var(--muted); overflow-y:auto; line-height:1.7;
+  }
+  .log-body .ok-line{ color:var(--ok); }
+  .log-body .ok-line::before{ content:'✓ '; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="ribbon">
+    <div class="ribbon-top">
+      <div class="brand">
+        <div class="logo"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16"/></svg></div>
+        <h1>Microstent Geometry Studio</h1>
+        <span class="sub">Parametric CAD — Ophthalmic Microstent Library</span>
+      </div>
+      <div class="meta">SCALE 1 UNIT = 1 mm · CONTROL SET FROM SOURCE STL</div>
+    </div>
+    <div class="ribbon-tabs">
+      <div class="ribbon-tab active">Home</div>
+      <div class="ribbon-tab">Geometry</div>
+      <div class="ribbon-tab">Parameters</div>
+      <div class="ribbon-tab">Export</div>
+    </div>
+    <div class="ribbon-actions">
+      <button class="ribbon-btn" id="resetBtn">
+        <svg viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14.6-4.6M4 14a8 8 0 0 0 14.6 4.6"/></svg>
+        Reset to control
+      </button>
+      <div class="ribbon-sep"></div>
+      <button class="ribbon-btn primary" id="exportBtn">
+        <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 19h16"/></svg>
+        Export STL
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="tree-pane">
+      <div class="pane-header">Model Builder</div>
+      <div class="tree">
+        <div class="tree-node group"><span class="caret">▾</span> Global Definitions</div>
+        <div class="tree-node group" style="padding-left:22px; color:var(--muted); font-weight:400; font-size:11.5px;">Parameters (control set)</div>
+        <div class="tree-node group" style="margin-top:6px;"><span class="caret">▾</span> Geometry 1</div>
+        <div id="shapeTree"></div>
+      </div>
+    </div>
+
+    <div class="settings-pane">
+      <div class="settings-crumb">Geometry 1 › <b id="crumbShape">Tubular</b> › Settings</div>
+      <div class="settings-body">
+        <div class="field-group-label">Dimensions</div>
+        <div id="paramContainer"></div>
+        <div class="field-group-label">Derived quantities</div>
+        <div class="derived-table" id="derivedBox"></div>
+        <div class="note" id="unitNote">Values shown are in millimeters, matched 1:1 to the source STL control mesh (1 unit = 1 mm).</div>
+      </div>
+    </div>
+
+    <div class="graphics-pane">
+      <div class="graphics-toolbar">
+        <div class="gt-left">
+          <span>Graphics — <b id="shapeTag">Tubular</b></span>
+          <span id="triCount"></span>
+        </div>
+        <span>Isometric view</span>
+      </div>
+      <div class="viewer">
+        <div id="canvas-host"></div>
+        <div class="viewer-hint">DRAG TO ORBIT · SCROLL TO ZOOM</div>
+        <div class="axis-badge">UNITS <b>mm</b> · GRID 0.5 mm</div>
+        <div class="toast" id="toast">STL exported</div>
+      </div>
+      <div class="bottom-strip">
+        <div class="bottom-tabs">
+          <div class="bottom-tab active">Messages</div>
+          <div class="bottom-tab">Progress</div>
+          <div class="bottom-tab">Log</div>
+        </div>
+        <div class="log-body" id="logBody"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   SCENE SETUP
+   ============================================================ */
+const host = document.getElementById('canvas-host');
+const scene = new THREE.Scene();
+scene.background = null;
+
+const camera = new THREE.PerspectiveCamera(42, host.clientWidth/host.clientHeight, 0.05, 500);
+camera.position.set(16, 12, 18);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(host.clientWidth, host.clientHeight);
+host.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0x8899bb, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.0);
+key.position.set(10, 14, 8);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x5eead4, 0.4);
+rim.position.set(-8, -4, -10);
+scene.add(rim);
+
+const grid = new THREE.GridHelper(4, 40, 0xB9C2CB, 0xD8DCE0);
+grid.position.y = -0.9;
+scene.add(grid);
+
+const material = new THREE.MeshStandardMaterial({
+  color: 0x1565A8, metalness:0.15, roughness:0.45, side: THREE.DoubleSide
+});
+let mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
+scene.add(mesh);
+
+/* ---- minimal orbit controls (no addon dependency) ---- */
+let isDragging=false, prevX=0, prevY=0, azimuth=0.8, polar=1.05, radius=3;
+const target = new THREE.Vector3(0,0,0);
+function updateCam(){
+  const p = Math.max(0.15, Math.min(Math.PI-0.15, polar));
+  camera.position.set(
+    target.x + radius*Math.sin(p)*Math.sin(azimuth),
+    target.y + radius*Math.cos(p),
+    target.z + radius*Math.sin(p)*Math.cos(azimuth)
+  );
+  camera.lookAt(target);
+}
+updateCam();
+renderer.domElement.addEventListener('pointerdown', e=>{ isDragging=true; prevX=e.clientX; prevY=e.clientY; });
+window.addEventListener('pointerup', ()=> isDragging=false);
+window.addEventListener('pointermove', e=>{
+  if(!isDragging) return;
+  const dx = e.clientX-prevX, dy = e.clientY-prevY;
+  prevX=e.clientX; prevY=e.clientY;
+  azimuth -= dx*0.006;
+  polar   -= dy*0.006;
+  updateCam();
+});
+renderer.domElement.addEventListener('wheel', e=>{
+  e.preventDefault();
+  radius = Math.max(0.3, Math.min(15, radius + e.deltaY*0.002));
+  updateCam();
+}, { passive:false });
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = host.clientWidth/host.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(host.clientWidth, host.clientHeight);
+});
+
+(function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); })();
+
+/* ============================================================
+   GEOMETRY ENGINE — swept hollow-annulus tube
+   Works for all 4 shapes by varying the centerline curve and
+   the outer/inner radius profile along it.
+   ============================================================ */
+function buildHollowTube(curve, opts){
+  const segments = opts.segments || 80;
+  const radial   = opts.radial   || 28;
+  const outerFn  = opts.outerFn;
+  const innerFn  = opts.innerFn;
+
+  const frames = curve.computeFrenetFrames(segments, false);
+  const pts    = curve.getSpacedPoints(segments);
+  const { normals, binormals } = frames;
+
+  const outerRows = [], innerRows = [];
+  for(let i=0;i<=segments;i++){
+    const u = i/segments;
+    const p = pts[i], N = normals[i], B = binormals[i];
+    const rO = Math.max(0.0001, outerFn(u));
+    const rI = Math.max(0, Math.min(rO-0.01, innerFn(u)));
+    const oRow=[], iRow=[];
+    for(let j=0;j<=radial;j++){
+      const th = (j/radial)*Math.PI*2;
+      const c = Math.cos(th), s = Math.sin(th);
+      const nx = N.x*c + B.x*s, ny = N.y*c + B.y*s, nz = N.z*c + B.z*s;
+      oRow.push(new THREE.Vector3(p.x+nx*rO, p.y+ny*rO, p.z+nz*rO));
+      iRow.push(new THREE.Vector3(p.x+nx*rI, p.y+ny*rI, p.z+nz*rI));
+    }
+    outerRows.push(oRow); innerRows.push(iRow);
+  }
+
+  const pos = [];
+  const tri = (a,b,c)=> pos.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
+
+  for(let i=0;i<segments;i++){
+    for(let j=0;j<radial;j++){
+      const a=outerRows[i][j], b=outerRows[i+1][j], c=outerRows[i+1][j+1], d=outerRows[i][j+1];
+      tri(a,b,c); tri(a,c,d);
+      const A=innerRows[i][j], B_=innerRows[i+1][j], C=innerRows[i+1][j+1], D=innerRows[i][j+1];
+      tri(A,C,B_); tri(A,D,C);
+    }
+  }
+  // end caps
+  for(let j=0;j<radial;j++){
+    const oA=outerRows[0][j], oB=outerRows[0][j+1], iA=innerRows[0][j], iB=innerRows[0][j+1];
+    tri(oA, iA, iB); tri(oA, iB, oB);
+    const oA2=outerRows[segments][j], oB2=outerRows[segments][j+1], iA2=innerRows[segments][j], iB2=innerRows[segments][j+1];
+    tri(oA2, oB2, iB2); tri(oA2, iB2, iA2);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/* Custom arc curve for the crescent form */
+class ArcCurve3 extends THREE.Curve{
+  constructor(radius, angleRad){ super(); this.radius=radius; this.angle=angleRad; }
+  getPoint(t, target=new THREE.Vector3()){
+    const a = (t-0.5)*this.angle;
+    const x = this.radius*Math.sin(a);
+    const y = this.radius*(1-Math.cos(a));
+    return target.set(x, y, 0);
+  }
+}
+
+function buildLPath(len1, len2, corner){
+  const c = Math.min(corner, len1*0.9, len2*0.9);
+  const p = new THREE.CurvePath();
+  p.add(new THREE.LineCurve3(new THREE.Vector3(-len1,0,0), new THREE.Vector3(-c,0,0)));
+  p.add(new THREE.QuadraticBezierCurve3(
+    new THREE.Vector3(-c,0,0), new THREE.Vector3(0,0,0), new THREE.Vector3(0,c,0)));
+  p.add(new THREE.LineCurve3(new THREE.Vector3(0,c,0), new THREE.Vector3(0,len2,0)));
+  return p;
+}
+
+/* ============================================================
+   SHAPE DEFINITIONS — control (base) values + slider config
+   ============================================================ */
+const SHAPES = {
+  tubular: {
+    label:'Tubular', tag:'TUBULAR',
+    icon:`<rect x="4" y="9" width="18" height="8" rx="4"></rect>`,
+    control:{ length:1.00, outerDiameter:0.30, wallThickness:0.05 },
+    params:[
+      {key:'length', label:'Length', min:0.3, max:3.0, step:0.01, unit:'mm'},
+      {key:'outerDiameter', label:'Outer diameter', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.25, step:0.005, unit:'mm'},
+    ],
+    build(v){
+      const curve = new THREE.LineCurve3(new THREE.Vector3(-v.length/2,0,0), new THREE.Vector3(v.length/2,0,0));
+      return buildHollowTube(curve, {
+        outerFn: ()=> v.outerDiameter/2,
+        innerFn: ()=> v.outerDiameter/2 - v.wallThickness
+      });
+    },
+    derived(v){ return { 'Lumen diameter': (v.outerDiameter-2*v.wallThickness).toFixed(3)+' mm' }; }
+  },
+
+  conical: {
+    label:'Conical', tag:'CONICAL',
+    icon:`<path d="M9 5 L15 5 L20 19 L4 19 Z"></path>`,
+    control:{ length:1.00, diaProximal:0.30, diaDistal:0.15, wallThickness:0.05 },
+    params:[
+      {key:'length', label:'Length', min:0.3, max:3.0, step:0.01, unit:'mm'},
+      {key:'diaProximal', label:'Opening 1 (proximal Ø)', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'diaDistal', label:'Opening 2 (distal Ø)', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.25, step:0.005, unit:'mm'},
+    ],
+    build(v){
+      const curve = new THREE.LineCurve3(new THREE.Vector3(-v.length/2,0,0), new THREE.Vector3(v.length/2,0,0));
+      return buildHollowTube(curve, {
+        outerFn: u => THREE.MathUtils.lerp(v.diaProximal/2, v.diaDistal/2, u),
+        innerFn: u => THREE.MathUtils.lerp(v.diaProximal/2, v.diaDistal/2, u) - v.wallThickness
+      });
+    },
+    derived(v){
+      const steep = Math.atan2(Math.abs(v.diaProximal-v.diaDistal)/2, v.length) * 180/Math.PI;
+      return { 'Taper angle': steep.toFixed(1)+' deg', 'Taper ratio': (v.diaProximal/v.diaDistal).toFixed(2)+' : 1' };
+    }
+  },
+
+  crescent: {
+    label:'Crescent', tag:'CRESCENT',
+    icon:`<path d="M17 4a9 9 0 1 0 0 16 7 7 0 1 1 0-16Z"></path>`,
+    control:{ arcRadius:0.685, openingAngle:110, tubeDiameter:0.30, wallThickness:0.05 },
+    params:[
+      {key:'arcRadius', label:'Arc radius', min:0.2, max:3.0, step:0.005, unit:'mm'},
+      {key:'openingAngle', label:'Opening angle', min:10, max:180, step:1, unit:'\u00b0'},
+      {key:'tubeDiameter', label:'Tube outer Ø', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.2, step:0.005, unit:'mm'},
+    ],
+    build(v){
+      const curve = new ArcCurve3(v.arcRadius, THREE.MathUtils.degToRad(v.openingAngle));
+      return buildHollowTube(curve, {
+        outerFn: ()=> v.tubeDiameter/2,
+        innerFn: ()=> v.tubeDiameter/2 - v.wallThickness
+      });
+    },
+    derived(v){
+      const rad = THREE.MathUtils.degToRad(v.openingAngle);
+      const chord = 2*v.arcRadius*Math.sin(rad/2);
+      const sagitta = v.arcRadius*(1-Math.cos(rad/2));
+      return { 'Opening width (chord)': chord.toFixed(3)+' mm', 'Depth (sagitta)': sagitta.toFixed(3)+' mm' };
+    }
+  },
+
+  lshaped: {
+    label:'L-shaped', tag:'L-SHAPED',
+    icon:`<path d="M6 4 L6 20 L20 20"></path>`,
+    control:{ length1:0.45, length2:0.30, outerDiameter:0.30, wallThickness:0.05, cornerRadius:0.25 },
+    params:[
+      {key:'length1', label:'Length — arm 1', min:0.15, max:1.5, step:0.01, unit:'mm'},
+      {key:'length2', label:'Length — arm 2', min:0.15, max:1.5, step:0.01, unit:'mm'},
+      {key:'outerDiameter', label:'Outer diameter', min:0.05, max:0.8, step:0.01, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.2, step:0.005, unit:'mm'},
+      {key:'cornerRadius', label:'Corner (bend) radius', min:0.05, max:0.6, step:0.01, unit:'mm'},
+    ],
+    build(v){
+      const curve = buildLPath(v.length1, v.length2, v.cornerRadius);
+      return buildHollowTube(curve, {
+        outerFn: ()=> v.outerDiameter/2,
+        innerFn: ()=> v.outerDiameter/2 - v.wallThickness
+      });
+    },
+    derived(v){ return { 'Total arm-to-arm length': (v.length1+v.length2).toFixed(3)+' mm' }; }
+  }
+};
+
+/* ============================================================
+   STATE + UI WIRING
+   ============================================================ */
+let currentShapeKey = 'tubular';
+let values = {}; // live editable values, per shape
+
+function cloneControl(key){ return JSON.parse(JSON.stringify(SHAPES[key].control)); }
+Object.keys(SHAPES).forEach(k => values[k] = cloneControl(k));
+
+const shapeTree = document.getElementById('shapeTree');
+Object.entries(SHAPES).forEach(([key, def])=>{
+  const leaf = document.createElement('div');
+  leaf.className = 'tree-leaf' + (key===currentShapeKey ? ' active' : '');
+  leaf.dataset.key = key;
+  leaf.innerHTML = `<svg viewBox="0 0 24 24">${def.icon}</svg><span>${def.label}</span>`;
+  leaf.addEventListener('click', ()=> selectShape(key));
+  shapeTree.appendChild(leaf);
+});
+
+function selectShape(key){
+  currentShapeKey = key;
+  [...shapeTree.children].forEach(b => b.classList.toggle('active', b.dataset.key===key));
+  document.getElementById('shapeTag').textContent = SHAPES[key].label;
+  document.getElementById('crumbShape').textContent = SHAPES[key].label;
+  renderParams();
+  regenerate();
+  fitCameraToGeometry(mesh.geometry);
+  logLine(`Switched to ${SHAPES[key].label} — loaded control-set dimensions.`);
+}
+
+function decimalsFor(step){
+  const s = step.toString();
+  const i = s.indexOf('.');
+  return i===-1 ? 0 : s.length - i - 1;
+}
+
+function renderParams(){
+  const def = SHAPES[currentShapeKey];
+  const v = values[currentShapeKey];
+  const container = document.getElementById('paramContainer');
+  container.innerHTML = '';
+  def.params.forEach(p=>{
+    const dec = decimalsFor(p.step);
+    const row = document.createElement('div');
+    row.className = 'param-row';
+    row.innerHTML = `
+      <span class="flabel">${p.label}</span>
+      <div class="field-inline">
+        <input type="range" id="in-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v[p.key]}">
+        <input type="text" class="num-box" id="num-${p.key}" value="${v[p.key].toFixed(dec)}">
+        <span class="unit-tag">${p.unit}</span>
+      </div>
+    `;
+    container.appendChild(row);
+    const slider = row.querySelector(`#in-${p.key}`);
+    const numBox = row.querySelector(`#num-${p.key}`);
+
+    slider.addEventListener('input', ()=>{
+      v[p.key] = parseFloat(slider.value);
+      numBox.value = v[p.key].toFixed(dec);
+      regenerate();
+    });
+
+    function commitNumBox(){
+      let val = parseFloat(numBox.value);
+      if(isNaN(val)) val = v[p.key];
+      val = Math.max(p.min, Math.min(p.max, val));
+      v[p.key] = val;
+      numBox.value = val.toFixed(dec);
+      slider.value = val;
+      regenerate();
+    }
+    numBox.addEventListener('change', commitNumBox);
+    numBox.addEventListener('keydown', e=>{ if(e.key==='Enter'){ numBox.blur(); } });
+  });
+  updateDerived();
+}
+
+function updateDerived(){
+  const def = SHAPES[currentShapeKey];
+  const v = values[currentShapeKey];
+  const d = def.derived ? def.derived(v) : {};
+  const box = document.getElementById('derivedBox');
+  box.innerHTML = Object.entries(d).map(([k,val])=>
+    `<div><span>${k}</span><span class="v">${val}</span></div>`).join('');
+}
+
+function fitCameraToGeometry(geo){
+  geo.computeBoundingSphere();
+  const r = geo.boundingSphere.radius || 0.5;
+  radius = Math.max(0.6, r*3.0);
+  updateCam();
+}
+
+function updateTriCount(geo){
+  const n = geo.attributes.position.count / 3;
+  document.getElementById('triCount').textContent = `· ${n.toLocaleString()} facets`;
+}
+
+function regenerate(){
+  const def = SHAPES[currentShapeKey];
+  const v = values[currentShapeKey];
+  const geo = def.build(v);
+  mesh.geometry.dispose();
+  mesh.geometry = geo;
+  updateDerived();
+  updateTriCount(geo);
+}
+
+function firstBuild(){
+  const def = SHAPES[currentShapeKey];
+  const v = values[currentShapeKey];
+  const geo = def.build(v);
+  mesh.geometry = geo;
+  fitCameraToGeometry(geo);
+  updateTriCount(geo);
+}
+
+/* ---- message log (COMSOL-style "Messages" tab) ---- */
+function logLine(msg, ok=true){
+  const body = document.getElementById('logBody');
+  const line = document.createElement('div');
+  line.className = ok ? 'ok-line' : '';
+  const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.textContent = `[${t}] ${msg}`;
+  body.appendChild(line);
+  body.scrollTop = body.scrollHeight;
+}
+
+renderParams();
+firstBuild();
+logLine(`Model Builder ready. Control-set dimensions loaded from source STL files (1 unit = 1 mm).`);
+logLine(`Geometry 1 built — ${SHAPES[currentShapeKey].label}.`);
+
+/* ============================================================
+   EXPORT / RESET
+   ============================================================ */
+function meshToASCIISTL(geometry, name){
+  const pos = geometry.attributes.position;
+  const lines = [`solid ${name}`];
+  const vA=new THREE.Vector3(), vB=new THREE.Vector3(), vC=new THREE.Vector3();
+  const e1=new THREE.Vector3(), e2=new THREE.Vector3(), n=new THREE.Vector3();
+  for(let i=0;i<pos.count;i+=3){
+    vA.fromBufferAttribute(pos, i);
+    vB.fromBufferAttribute(pos, i+1);
+    vC.fromBufferAttribute(pos, i+2);
+    e1.subVectors(vB, vA);
+    e2.subVectors(vC, vA);
+    n.crossVectors(e1, e2).normalize();
+    lines.push(`facet normal ${n.x.toExponential(6)} ${n.y.toExponential(6)} ${n.z.toExponential(6)}`);
+    lines.push(' outer loop');
+    [vA,vB,vC].forEach(p => lines.push(`  vertex ${p.x.toExponential(6)} ${p.y.toExponential(6)} ${p.z.toExponential(6)}`));
+    lines.push(' endloop');
+    lines.push('endfacet');
+  }
+  lines.push(`endsolid ${name}`);
+  return lines.join('\n');
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=> t.classList.remove('show'), 1800);
+}
+
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const stl = meshToASCIISTL(mesh.geometry, currentShapeKey);
+  const blob = new Blob([stl], { type:'model/stl' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const v = values[currentShapeKey];
+  const stamp = Object.entries(v).map(([k,val])=>`${k}-${val}`).join('_').slice(0,60);
+  a.href = url;
+  a.download = `microstent_${currentShapeKey}_${stamp}.stl`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  showToast('STL exported ✓');
+  logLine(`Exported ${a.download} — ${mesh.geometry.attributes.position.count/3} facets.`);
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  values[currentShapeKey] = cloneControl(currentShapeKey);
+  renderParams();
+  regenerate();
+  showToast('Reset to control mesh');
+  logLine(`${SHAPES[currentShapeKey].label} reset to control-set dimensions.`);
+});
+</script>
+</body>
+</html>

@@ -5,295 +5,189 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Microstent Geometry Studio</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
   :root{
-    --win:#ECECEC;
-    --panel:#F6F6F6;
-    --panel-2:#EFEFEF;
-    --tree-bg:#FBFBFB;
-    --border:#C7CBCF;
-    --border-strong:#AEB4BA;
-    --text:#1E2328;
-    --muted:#5B6570;
-    --muted-2:#8A929B;
+    --bg:#EDEEF0;
+    --panel:#F7F8F9;
+    --panel-2:#EFF1F3;
+    --line:#D6DADE;
     --accent:#0F5FA6;
     --accent-dark:#0B4A82;
     --accent-bg:#DCEBF8;
-    --accent-bg-2:#CFE3F5;
-    --field-bg:#FFFFFF;
-    --ok:#2E7D46;
-    --graphics-bg:#E7EAED;
+    --text:#20262C;
+    --muted:#6B7480;
+    --muted-2:#98A0A9;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;background:var(--win);color:var(--text);
-    font-family:'Inter','Segoe UI',Tahoma,Arial,sans-serif; overflow:hidden; font-size:13px;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Inter',sans-serif; overflow:hidden;}
   .app{display:flex; flex-direction:column; height:100vh;}
 
-  /* ---- Ribbon ---- */
-  .ribbon{
-    flex-shrink:0; background:linear-gradient(180deg,#FFFFFF,#F1F2F3);
-    border-bottom:1px solid var(--border-strong);
-  }
-  .ribbon-top{
+  /* ---- Title bar ---- */
+  .titlebar{
     display:flex; align-items:center; justify-content:space-between;
-    padding:8px 14px 6px; border-bottom:1px solid var(--border);
+    padding:14px 22px; border-bottom:1px solid var(--line);
+    background:var(--panel);
+    flex-shrink:0;
   }
-  .brand{display:flex; align-items:center; gap:9px;}
-  .brand .logo{
-    width:22px; height:22px; border-radius:3px; background:var(--accent);
-    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  .brand{display:flex; align-items:baseline; gap:12px;}
+  .brand h1{
+    font-weight:700; font-size:17px;
+    letter-spacing:0.01em; margin:0; color:var(--text);
   }
-  .brand .logo svg{ width:13px; height:13px; stroke:#fff; fill:none; stroke-width:2; }
-  .brand h1{ font-size:14px; font-weight:700; margin:0; color:var(--text); letter-spacing:0.01em;}
-  .brand .sub{ font-size:11px; color:var(--muted); margin-left:6px; }
-  .ribbon-top .meta{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--muted-2);}
+  .brand .eyebrow{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:0.1em;
+    color:var(--accent-dark); text-transform:uppercase; border:1px solid var(--accent);
+    background:var(--accent-bg);
+    padding:3px 7px; border-radius:3px;
+  }
+  .titlebar .meta{
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--muted-2);
+  }
 
-  .ribbon-tabs{ display:flex; align-items:stretch; padding:0 10px; gap:2px; }
-  .ribbon-tab{
-    padding:6px 14px; font-size:12px; color:var(--muted); cursor:default;
-    border:1px solid transparent; border-bottom:none; margin-bottom:-1px;
-  }
-  .ribbon-tab.active{
-    background:var(--panel); color:var(--accent-dark); font-weight:600;
-    border:1px solid var(--border); border-bottom:1px solid var(--panel); border-radius:3px 3px 0 0;
-  }
-  .ribbon-actions{
-    display:flex; align-items:center; gap:6px; padding:8px 10px; background:var(--panel);
-    border-bottom:1px solid var(--border-strong);
-  }
-  .ribbon-btn{
-    display:flex; flex-direction:column; align-items:center; gap:3px;
-    background:transparent; border:1px solid transparent; border-radius:4px;
-    padding:5px 10px; cursor:pointer; color:var(--text); font-size:10.5px; font-weight:500;
-    transition:background .1s, border-color .1s;
-  }
-  .ribbon-btn:hover{ background:var(--accent-bg); border-color:var(--border); }
-  .ribbon-btn svg{ width:19px; height:19px; stroke:var(--accent-dark); fill:none; stroke-width:1.7; }
-  .ribbon-btn.primary{ background:var(--accent); color:#fff; }
-  .ribbon-btn.primary svg{ stroke:#fff; }
-  .ribbon-btn.primary:hover{ background:var(--accent-dark); }
-  .ribbon-sep{ width:1px; align-self:stretch; background:var(--border); margin:2px 4px; }
-
-  /* ---- Body layout: tree | settings | graphics ---- */
+  /* ---- Layout ---- */
   .main{ flex:1; display:flex; min-height:0; }
-
-  .tree-pane{
-    width:196px; flex-shrink:0; background:var(--tree-bg); border-right:1px solid var(--border);
+  .sidebar{
+    width:350px; flex-shrink:0; background:var(--panel);
+    border-right:1px solid var(--line); overflow-y:auto;
     display:flex; flex-direction:column;
   }
-  .pane-header{
-    padding:7px 10px; font-size:11px; font-weight:700; color:var(--muted);
-    text-transform:uppercase; letter-spacing:0.05em; background:var(--panel-2);
-    border-bottom:1px solid var(--border);
+  .viewer{ flex:1; position:relative; background:
+      radial-gradient(circle at 30% 20%, #F5F6F7 0%, #E2E5E8 75%);
   }
-  .tree{ padding:6px 0; overflow-y:auto; flex:1; }
-  .tree-node{
-    display:flex; align-items:center; gap:5px; padding:4px 8px 4px 14px;
-    font-size:12.5px; color:var(--text); cursor:default; user-select:none;
-  }
-  .tree-node .caret{ width:10px; font-size:9px; color:var(--muted-2); }
-  .tree-node.group{ font-weight:600; }
-  .tree-leaf{
-    display:flex; align-items:center; gap:6px; padding:5px 8px 5px 30px;
-    font-size:12.5px; color:var(--text); cursor:pointer; border-radius:2px; margin:0 4px;
-  }
-  .tree-leaf svg{ width:14px; height:14px; stroke:var(--muted); fill:none; stroke-width:1.6; flex-shrink:0;}
-  .tree-leaf:hover{ background:var(--accent-bg); }
-  .tree-leaf.active{ background:var(--accent-bg-2); color:var(--accent-dark); font-weight:600; }
-  .tree-leaf.active svg{ stroke:var(--accent-dark); }
+  #canvas-host{ position:absolute; inset:0; }
 
-  .settings-pane{
-    width:308px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--border);
-    display:flex; flex-direction:column; overflow-y:auto;
+  /* ---- Shape selector ---- */
+  .shape-selector{ padding:16px 16px 6px; }
+  .section-label{
+    font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:0.1em;
+    color:var(--muted); text-transform:uppercase; margin:0 0 10px 2px;
   }
-  .settings-crumb{
-    padding:8px 12px; font-size:10.5px; color:var(--muted-2); font-family:'JetBrains Mono',monospace;
-    border-bottom:1px solid var(--border); background:var(--panel-2);
+  .shape-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .shape-btn{
+    background:#fff; border:1px solid var(--line); border-radius:6px;
+    color:var(--muted); padding:12px 8px; cursor:pointer; text-align:left;
+    font-size:12.5px; font-weight:600;
+    transition:border-color .15s, color .15s, background .15s;
+    display:flex; flex-direction:column; gap:6px;
   }
-  .settings-crumb b{ color:var(--accent-dark); }
-  .settings-body{ padding:12px; flex:1; }
-  .field-group-label{
-    font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
-    letter-spacing:0.04em; margin:14px 0 8px; padding-bottom:4px; border-bottom:1px solid var(--border);
-  }
-  .field-group-label:first-child{ margin-top:0; }
+  .shape-btn svg{ width:26px; height:26px; stroke:var(--muted); fill:none; stroke-width:1.6; }
+  .shape-btn:hover{ border-color:var(--muted-2); color:var(--text); }
+  .shape-btn.active{ border-color:var(--accent); color:var(--accent-dark); background:var(--accent-bg); }
+  .shape-btn.active svg{ stroke:var(--accent-dark); }
 
-  .param-row{ margin-bottom:12px; }
-  .param-row .flabel{ font-size:12px; color:var(--text); display:block; margin-bottom:4px; font-weight:500; }
-  .field-inline{ display:flex; align-items:center; gap:8px; }
-  .num-box{
-    width:78px; flex-shrink:0; background:var(--field-bg); border:1px solid var(--border-strong);
-    border-radius:3px; padding:4px 6px; font-family:'JetBrains Mono',monospace; font-size:12px;
-    color:var(--text); text-align:right;
+  /* ---- Params ---- */
+  .params{ padding:18px 16px; flex:1; }
+  .param-row{ margin-bottom:14px; }
+  .param-row .top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+  .param-row label{ font-size:12.5px; color:var(--text); font-weight:500;}
+  .param-row .val{
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--accent-dark);
+    background:var(--accent-bg); border:1px solid var(--accent);
+    padding:1px 7px; border-radius:3px; min-width:52px; text-align:center;
   }
-  .num-box:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg-2); }
-  .unit-tag{ font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace; width:22px; }
   input[type=range]{
-    -webkit-appearance:none; flex:1; height:4px; background:var(--border-strong);
+    -webkit-appearance:none; width:100%; height:3px; background:var(--line);
     border-radius:2px; outline:none;
   }
   input[type=range]::-webkit-slider-thumb{
-    -webkit-appearance:none; width:13px; height:13px; border-radius:50%;
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
     background:var(--accent); cursor:pointer; border:2px solid #fff;
-    box-shadow:0 0 0 1px var(--accent-dark);
+    box-shadow:0 0 0 1px var(--accent);
   }
   input[type=range]::-moz-range-thumb{
-    width:11px; height:11px; border-radius:50%; background:var(--accent);
+    width:12px; height:12px; border-radius:50%; background:var(--accent);
     border:2px solid #fff; cursor:pointer;
   }
 
-  .derived-table{
-    margin-top:2px; border:1px solid var(--border); border-radius:3px; overflow:hidden;
-    background:var(--field-bg);
+  .derived{
+    margin-top:4px; padding:12px; background:#fff; border:1px solid var(--line);
+    border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted);
   }
-  .derived-table div{
-    display:flex; justify-content:space-between; padding:5px 9px; font-size:11.5px;
-    border-bottom:1px solid var(--border); font-family:'JetBrains Mono',monospace;
-  }
-  .derived-table div:last-child{ border-bottom:none; }
-  .derived-table span.k{ color:var(--muted); }
-  .derived-table span.v{ color:var(--accent-dark); font-weight:600; }
+  .derived div{ display:flex; justify-content:space-between; padding:3px 0; }
+  .derived span.v{ color:var(--accent-dark); font-weight:600; }
 
-  .note{
-    margin-top:14px; padding:9px 10px; background:#FFF9E6; border:1px solid #E8D68A;
-    border-radius:3px; font-size:11px; color:#6B5A1A; line-height:1.5;
+  /* ---- Footer / export ---- */
+  .footer{ padding:16px; border-top:1px solid var(--line); }
+  .btn{
+    width:100%; padding:12px; border-radius:6px; border:1px solid transparent;
+    font-weight:600; font-size:13px;
+    cursor:pointer; letter-spacing:0.01em; transition:opacity .15s, transform .1s;
   }
+  .btn:active{ transform:scale(0.98); }
+  .btn-primary{ background:var(--accent); color:#fff; margin-bottom:8px; }
+  .btn-primary:hover{ background:var(--accent-dark); }
+  .btn-ghost{ background:#fff; border-color:var(--line); color:var(--muted); }
+  .btn-ghost:hover{ color:var(--text); border-color:var(--muted-2); }
 
-  /* ---- Graphics window ---- */
-  .graphics-pane{ flex:1; display:flex; flex-direction:column; min-width:0; }
-  .graphics-toolbar{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:6px 12px; background:var(--panel); border-bottom:1px solid var(--border);
-    font-size:11px; color:var(--muted);
+  /* ---- Viewer overlays ---- */
+  .viewer-tag{
+    position:absolute; top:16px; left:18px; font-family:'JetBrains Mono',monospace;
+    font-size:11px; color:var(--muted); letter-spacing:0.03em; pointer-events:none;
+    background:rgba(255,255,255,0.75); padding:3px 8px; border-radius:3px;
   }
-  .graphics-toolbar .gt-left{ display:flex; align-items:center; gap:14px; }
-  .graphics-toolbar b{ color:var(--text); }
-  .viewer{ flex:1; position:relative; background:
-      radial-gradient(circle at 32% 24%, #F2F4F6 0%, var(--graphics-bg) 75%);
-  }
-  #canvas-host{ position:absolute; inset:0; }
+  .viewer-tag b{ color:var(--text); font-weight:600; }
   .viewer-hint{
-    position:absolute; bottom:10px; left:14px; font-family:'JetBrains Mono',monospace;
+    position:absolute; bottom:14px; left:18px; font-family:'JetBrains Mono',monospace;
     font-size:10.5px; color:var(--muted); pointer-events:none;
-    background:rgba(255,255,255,0.7); padding:2px 6px; border-radius:2px;
+    background:rgba(255,255,255,0.75); padding:2px 7px; border-radius:3px;
   }
-  .axis-badge{
-    position:absolute; bottom:10px; right:14px; font-family:'JetBrains Mono',monospace;
+  .scale-badge{
+    position:absolute; bottom:14px; right:18px; font-family:'JetBrains Mono',monospace;
     font-size:10.5px; color:var(--muted); text-align:right; pointer-events:none;
-    background:rgba(255,255,255,0.7); padding:2px 6px; border-radius:2px;
+    background:rgba(255,255,255,0.75); padding:2px 7px; border-radius:3px;
   }
-  .axis-badge b{ color:var(--accent-dark); }
+  .scale-badge b{ color:var(--accent-dark); }
 
   .toast{
-    position:absolute; top:12px; right:14px; background:#fff;
-    border:1px solid var(--ok); color:var(--ok);
-    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:7px 11px;
-    border-radius:3px; opacity:0; transform:translateY(-6px);
+    position:absolute; top:16px; right:18px; background:#fff;
+    border:1px solid var(--accent); color:var(--accent-dark);
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; padding:8px 12px;
+    border-radius:5px; opacity:0; transform:translateY(-6px);
     transition:opacity .2s, transform .2s; pointer-events:none;
-    box-shadow:0 2px 6px rgba(0,0,0,0.12);
+    box-shadow:0 2px 8px rgba(0,0,0,0.1);
   }
   .toast.show{ opacity:1; transform:translateY(0); }
-
-  /* ---- Bottom log strip (COMSOL Messages/Progress/Log tabs) ---- */
-  .bottom-strip{
-    flex-shrink:0; height:88px; background:#FCFCFC; border-top:1px solid var(--border-strong);
-    display:flex; flex-direction:column;
-  }
-  .bottom-tabs{
-    display:flex; gap:2px; padding:4px 8px 0; background:var(--panel-2); border-bottom:1px solid var(--border);
-  }
-  .bottom-tab{
-    padding:4px 12px; font-size:11px; color:var(--muted); border:1px solid transparent; border-bottom:none;
-  }
-  .bottom-tab.active{
-    background:#FCFCFC; color:var(--accent-dark); font-weight:600;
-    border:1px solid var(--border); border-bottom:1px solid #FCFCFC; border-radius:3px 3px 0 0;
-  }
-  .log-body{
-    flex:1; padding:7px 12px; font-family:'JetBrains Mono',monospace; font-size:11px;
-    color:var(--muted); overflow-y:auto; line-height:1.7;
-  }
-  .log-body .ok-line{ color:var(--ok); }
-  .log-body .ok-line::before{ content:'✓ '; }
 </style>
 </head>
 <body>
 <div class="app">
 
-  <div class="ribbon">
-    <div class="ribbon-top">
-      <div class="brand">
-        <div class="logo"><svg viewBox="0 0 24 24"><path d="M4 12h16M12 4v16"/></svg></div>
-        <h1>Microstent Geometry Studio</h1>
-        <span class="sub">Parametric CAD — Ophthalmic Microstent Library</span>
-      </div>
-      <div class="meta">SCALE 1 UNIT = 1 mm · CONTROL SET FROM SOURCE STL</div>
+  <div class="titlebar">
+    <div class="brand">
+      <h1>Microstent Geometry Studio</h1>
+      <span class="eyebrow">Parametric CAD · STL Export</span>
     </div>
-    <div class="ribbon-tabs">
-      <div class="ribbon-tab active">Home</div>
-      <div class="ribbon-tab">Geometry</div>
-      <div class="ribbon-tab">Parameters</div>
-      <div class="ribbon-tab">Export</div>
-    </div>
-    <div class="ribbon-actions">
-      <button class="ribbon-btn" id="resetBtn">
-        <svg viewBox="0 0 24 24"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 10a8 8 0 0 0-14.6-4.6M4 14a8 8 0 0 0 14.6 4.6"/></svg>
-        Reset to control
-      </button>
-      <div class="ribbon-sep"></div>
-      <button class="ribbon-btn primary" id="exportBtn">
-        <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M4 19h16"/></svg>
-        Export STL
-      </button>
-    </div>
+    <div class="meta">SCALE 1 UNIT = 1 mm</div>
   </div>
 
   <div class="main">
-    <div class="tree-pane">
-      <div class="pane-header">Model Builder</div>
-      <div class="tree">
-        <div class="tree-node group"><span class="caret">▾</span> Global Definitions</div>
-        <div class="tree-node group" style="padding-left:22px; color:var(--muted); font-weight:400; font-size:11.5px;">Parameters (control set)</div>
-        <div class="tree-node group" style="margin-top:6px;"><span class="caret">▾</span> Geometry 1</div>
-        <div id="shapeTree"></div>
+    <div class="sidebar">
+      <div class="shape-selector">
+        <p class="section-label">01 · Select base form</p>
+        <div class="shape-grid" id="shapeGrid"></div>
       </div>
-    </div>
 
-    <div class="settings-pane">
-      <div class="settings-crumb">Geometry 1 › <b id="crumbShape">Tubular</b> › Settings</div>
-      <div class="settings-body">
-        <div class="field-group-label">Dimensions</div>
+      <div class="params">
+        <p class="section-label" style="margin-top:22px;">02 · Edit geometry</p>
         <div id="paramContainer"></div>
-        <div class="field-group-label">Derived quantities</div>
-        <div class="derived-table" id="derivedBox"></div>
-        <div class="note" id="unitNote">Values shown are in millimeters, matched 1:1 to the source STL control mesh (1 unit = 1 mm).</div>
+        <div class="derived" id="derivedBox"></div>
+      </div>
+
+      <div class="footer">
+        <button class="btn btn-primary" id="exportBtn">Download edited STL</button>
+        <button class="btn btn-ghost" id="resetBtn">Reset to control mesh</button>
       </div>
     </div>
 
-    <div class="graphics-pane">
-      <div class="graphics-toolbar">
-        <div class="gt-left">
-          <span>Graphics — <b id="shapeTag">Tubular</b></span>
-          <span id="triCount"></span>
-        </div>
-        <span>Isometric view</span>
-      </div>
-      <div class="viewer">
-        <div id="canvas-host"></div>
-        <div class="viewer-hint">DRAG TO ORBIT · SCROLL TO ZOOM</div>
-        <div class="axis-badge">UNITS <b>mm</b> · GRID 0.5 mm</div>
-        <div class="toast" id="toast">STL exported</div>
-      </div>
-      <div class="bottom-strip">
-        <div class="bottom-tabs">
-          <div class="bottom-tab active">Messages</div>
-          <div class="bottom-tab">Progress</div>
-          <div class="bottom-tab">Log</div>
-        </div>
-        <div class="log-body" id="logBody"></div>
-      </div>
+    <div class="viewer">
+      <div id="canvas-host"></div>
+      <div class="viewer-tag">EDITING&nbsp; <b id="shapeTag">TUBULAR</b></div>
+      <div class="viewer-hint">DRAG TO ORBIT · SCROLL TO ZOOM</div>
+      <div class="scale-badge">UNITS <b>mm</b></div>
+      <div class="toast" id="toast">STL exported</div>
     </div>
   </div>
 
@@ -307,28 +201,28 @@ const host = document.getElementById('canvas-host');
 const scene = new THREE.Scene();
 scene.background = null;
 
-const camera = new THREE.PerspectiveCamera(42, host.clientWidth/host.clientHeight, 0.05, 500);
-camera.position.set(16, 12, 18);
+const camera = new THREE.PerspectiveCamera(42, host.clientWidth/host.clientHeight, 0.01, 100);
+camera.position.set(2, 1.5, 2.2);
 
 const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(host.clientWidth, host.clientHeight);
 host.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0x8899bb, 0.55));
-const key = new THREE.DirectionalLight(0xffffff, 1.0);
+scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+const key = new THREE.DirectionalLight(0xffffff, 0.9);
 key.position.set(10, 14, 8);
 scene.add(key);
-const rim = new THREE.DirectionalLight(0x5eead4, 0.4);
+const rim = new THREE.DirectionalLight(0x9fd0ff, 0.35);
 rim.position.set(-8, -4, -10);
 scene.add(rim);
 
-const grid = new THREE.GridHelper(4, 40, 0xB9C2CB, 0xD8DCE0);
+const grid = new THREE.GridHelper(4, 40, 0xC3C9CE, 0xDDE1E4);
 grid.position.y = -0.9;
 scene.add(grid);
 
 const material = new THREE.MeshStandardMaterial({
-  color: 0x1565A8, metalness:0.15, roughness:0.45, side: THREE.DoubleSide
+  color: 0xB9C4CC, metalness:0.55, roughness:0.32, side: THREE.DoubleSide
 });
 let mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
 scene.add(mesh);
@@ -358,7 +252,7 @@ window.addEventListener('pointermove', e=>{
 });
 renderer.domElement.addEventListener('wheel', e=>{
   e.preventDefault();
-  radius = Math.max(0.3, Math.min(15, radius + e.deltaY*0.002));
+  radius = Math.max(0.15, Math.min(15, radius + e.deltaY*0.002));
   updateCam();
 }, { passive:false });
 
@@ -371,49 +265,97 @@ window.addEventListener('resize', ()=>{
 (function animate(){ requestAnimationFrame(animate); renderer.render(scene, camera); })();
 
 /* ============================================================
-   GEOMETRY ENGINE — swept hollow-annulus tube
-   Works for all 4 shapes by varying the centerline curve and
-   the outer/inner radius profile along it.
+   HELPERS
+   ============================================================ */
+function smoothstep(x){ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); }
+function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
+
+/* ============================================================
+   GEOMETRY ENGINE — swept hollow-annulus tube.
+   outerFn/innerFn now take (u, theta) so cross-sections can vary
+   both along the sweep AND around the circumference (needed for
+   ribs, flanges, and directional window cutouts).
    ============================================================ */
 function buildHollowTube(curve, opts){
-  const segments = opts.segments || 80;
-  const radial   = opts.radial   || 28;
+  const segments = opts.segments || 110;
+  const radial   = opts.radial   || 36;
   const outerFn  = opts.outerFn;
   const innerFn  = opts.innerFn;
+  // Optional: holeTest(u, theta) -> true means "material fully removed here".
+  // Where a whole grid cell's 4 corners test true, that patch of wall is
+  // skipped entirely (both outer and inner faces), and a connecting
+  // "throat" wall is stitched in along the boundary between removed and
+  // solid cells so the cut reads as an actual hole clean through the wall
+  // (visually AND in the exported STL), not just a thinned dimple.
+  const holeTest = opts.holeTest || null;
 
   const frames = curve.computeFrenetFrames(segments, false);
   const pts    = curve.getSpacedPoints(segments);
   const { normals, binormals } = frames;
 
-  const outerRows = [], innerRows = [];
+  const outerRows = [], innerRows = [], holeMask = [];
   for(let i=0;i<=segments;i++){
     const u = i/segments;
     const p = pts[i], N = normals[i], B = binormals[i];
-    const rO = Math.max(0.0001, outerFn(u));
-    const rI = Math.max(0, Math.min(rO-0.01, innerFn(u)));
-    const oRow=[], iRow=[];
+    const oRow=[], iRow=[], hRow=[];
     for(let j=0;j<=radial;j++){
       const th = (j/radial)*Math.PI*2;
       const c = Math.cos(th), s = Math.sin(th);
       const nx = N.x*c + B.x*s, ny = N.y*c + B.y*s, nz = N.z*c + B.z*s;
+      const rO = Math.max(0.0006, outerFn(u, th));
+      const rI = Math.max(0, Math.min(rO-0.001, innerFn(u, th)));
       oRow.push(new THREE.Vector3(p.x+nx*rO, p.y+ny*rO, p.z+nz*rO));
       iRow.push(new THREE.Vector3(p.x+nx*rI, p.y+ny*rI, p.z+nz*rI));
+      hRow.push(holeTest ? !!holeTest(u, th) : false);
     }
-    outerRows.push(oRow); innerRows.push(iRow);
+    outerRows.push(oRow); innerRows.push(iRow); holeMask.push(hRow);
   }
 
   const pos = [];
   const tri = (a,b,c)=> pos.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
 
+  // A "cell" is the quad patch between grid rows i/i+1 and columns j/j+1.
+  // It's a hole cell only if ALL 4 corners test inside the hole, so the
+  // cut boundary follows the grid resolution — bump segments/radial on
+  // shapes with holes for a cleaner edge. j wraps around the circumference.
+  function cellIsHole(i, jRaw){
+    if(i<0 || i>=segments) return false;
+    const j = ((jRaw % radial) + radial) % radial;
+    return holeMask[i][j] && holeMask[i][j+1] && holeMask[i+1][j] && holeMask[i+1][j+1];
+  }
+
   for(let i=0;i<segments;i++){
     for(let j=0;j<radial;j++){
+      if(cellIsHole(i,j)) continue; // material fully removed — no outer/inner skin here
+
       const a=outerRows[i][j], b=outerRows[i+1][j], c=outerRows[i+1][j+1], d=outerRows[i][j+1];
       tri(a,b,c); tri(a,c,d);
       const A=innerRows[i][j], B_=innerRows[i+1][j], C=innerRows[i+1][j+1], D=innerRows[i][j+1];
       tri(A,C,B_); tri(A,D,C);
+
+      if(!holeTest) continue;
+      // Stitch a throat wall (outer edge -> inner edge) along any side of
+      // this solid cell that borders a removed cell, so the hole actually
+      // opens all the way through the wall thickness instead of leaving a
+      // disconnected gap.
+      if(cellIsHole(i-1,j)){
+        const oa=outerRows[i][j], ob=outerRows[i][j+1], ia=innerRows[i][j], ib=innerRows[i][j+1];
+        tri(oa, ob, ib); tri(oa, ib, ia);
+      }
+      if(cellIsHole(i+1,j)){
+        const oa=outerRows[i+1][j], ob=outerRows[i+1][j+1], ia=innerRows[i+1][j], ib=innerRows[i+1][j+1];
+        tri(oa, ob, ib); tri(oa, ib, ia);
+      }
+      if(cellIsHole(i,j-1)){
+        const oa=outerRows[i][j], ob=outerRows[i+1][j], ia=innerRows[i][j], ib=innerRows[i+1][j];
+        tri(oa, ob, ib); tri(oa, ib, ia);
+      }
+      if(cellIsHole(i,j+1)){
+        const oa=outerRows[i][j+1], ob=outerRows[i+1][j+1], ia=innerRows[i][j+1], ib=innerRows[i+1][j+1];
+        tri(oa, ob, ib); tri(oa, ib, ia);
+      }
     }
   }
-  // end caps
   for(let j=0;j<radial;j++){
     const oA=outerRows[0][j], oB=outerRows[0][j+1], iA=innerRows[0][j], iB=innerRows[0][j+1];
     tri(oA, iA, iB); tri(oA, iB, oB);
@@ -438,106 +380,367 @@ class ArcCurve3 extends THREE.Curve{
   }
 }
 
-function buildLPath(len1, len2, corner){
-  const c = Math.min(corner, len1*0.9, len2*0.9);
-  const p = new THREE.CurvePath();
-  p.add(new THREE.LineCurve3(new THREE.Vector3(-len1,0,0), new THREE.Vector3(-c,0,0)));
-  p.add(new THREE.QuadraticBezierCurve3(
-    new THREE.Vector3(-c,0,0), new THREE.Vector3(0,0,0), new THREE.Vector3(0,c,0)));
-  p.add(new THREE.LineCurve3(new THREE.Vector3(0,c,0), new THREE.Vector3(0,len2,0)));
-  return p;
+/* Custom L-shaped curve for the L-shaped form: a straight blade segment,
+   a quarter-circle bend, then a straight vertical socket segment. */
+class LShapeCurve3 extends THREE.Curve{
+  constructor(bladeLength, bendRadius, socketLength, bendAngleRad){
+    super();
+    this.bladeLength  = Math.max(0.001, bladeLength);
+    this.bendRadius   = Math.max(0.015, bendRadius);
+    this.socketLength = Math.max(0.001, socketLength);
+    this.bendAngle = bendAngleRad !== undefined ? bendAngleRad : Math.PI/2;
+    this.arcLen  = this.bendRadius * this.bendAngle;
+    this.total   = this.bladeLength + this.arcLen + this.socketLength;
+    this.tBladeEnd = this.bladeLength / this.total;
+    this.tArcEnd   = this.tBladeEnd + this.arcLen / this.total;
+  }
+  getPoint(t, target=new THREE.Vector3()){
+    const bl = this.bladeLength, R = this.bendRadius, sl = this.socketLength, BA = this.bendAngle;
+    if(t <= this.tBladeEnd){
+      const s = this.tBladeEnd>0 ? t/this.tBladeEnd : 0;
+      return target.set(bl*s, 0, 0);
+    } else if(t <= this.tArcEnd){
+      const span = this.tArcEnd - this.tBladeEnd;
+      const u2 = span>0 ? (t-this.tBladeEnd)/span : 0;
+      const a = u2*BA;
+      return target.set(bl + R*Math.sin(a), R - R*Math.cos(a), 0);
+    } else {
+      const span = 1 - this.tArcEnd;
+      const u3 = span>0 ? (t-this.tArcEnd)/span : 0;
+      const endX = bl + R*Math.sin(BA), endY = R - R*Math.cos(BA);
+      const dirX = Math.cos(BA), dirY = Math.sin(BA); // tangent direction where the arc lets off
+      return target.set(endX + dirX*sl*u3, endY + dirY*sl*u3, 0);
+    }
+  }
 }
 
 /* ============================================================
-   SHAPE DEFINITIONS — control (base) values + slider config
+   SHAPE DEFINITIONS — matched to reference photos.
    ============================================================ */
 const SHAPES = {
+
+  /* ---- TUBULAR: ribbed shaft + smooth hub, per reference photo ---- */
   tubular: {
     label:'Tubular', tag:'TUBULAR',
     icon:`<rect x="4" y="9" width="18" height="8" rx="4"></rect>`,
-    control:{ length:1.00, outerDiameter:0.30, wallThickness:0.05 },
+    control:{ length:1.00, outerDiameter:0.30, wallThickness:0.05,
+              ribCount:5, ribHeight:0.045, ribZoneLength:0.55 },
     params:[
       {key:'length', label:'Length', min:0.3, max:3.0, step:0.01, unit:'mm'},
-      {key:'outerDiameter', label:'Outer diameter', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'outerDiameter', label:'Shaft diameter', min:0.05, max:1.0, step:0.01, unit:'mm'},
       {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.25, step:0.005, unit:'mm'},
+      {key:'ribCount', label:'Number of bumps (ribs)', min:0, max:14, step:1, unit:''},
+      {key:'ribHeight', label:'Bump height', min:0, max:0.15, step:0.005, unit:'mm'},
+      {key:'ribZoneLength', label:'Ribbed zone length', min:0, max:3.0, step:0.01, unit:'mm'},
     ],
     build(v){
       const curve = new THREE.LineCurve3(new THREE.Vector3(-v.length/2,0,0), new THREE.Vector3(v.length/2,0,0));
+      const baseR = v.outerDiameter/2;
+      const ribZoneFrac = clamp(v.ribZoneLength/v.length, 0, 1);
+      const n = Math.max(0, Math.round(v.ribCount));
       return buildHollowTube(curve, {
-        outerFn: ()=> v.outerDiameter/2,
-        innerFn: ()=> v.outerDiameter/2 - v.wallThickness
+        outerFn: (u)=>{
+          if(n===0 || u > ribZoneFrac || ribZoneFrac<=0) return baseR;
+          const t = u/ribZoneFrac;
+          const period = 1/n;
+          const localT = (t % period)/period;
+          const bump = Math.pow(Math.sin(localT*Math.PI), 2);
+          return baseR + v.ribHeight*bump;
+        },
+        innerFn: ()=> baseR - v.wallThickness
       });
     },
-    derived(v){ return { 'Lumen diameter': (v.outerDiameter-2*v.wallThickness).toFixed(3)+' mm' }; }
+    derived(v){ return {
+      'Lumen diameter': (v.outerDiameter-2*v.wallThickness).toFixed(3)+' mm',
+      'Smooth hub length': Math.max(0, v.length-v.ribZoneLength).toFixed(3)+' mm'
+    }; }
   },
 
+  /* ---- CONICAL: matched to reference photo proportions:
+     wide flat flange (drilled holes) -> narrow neck -> cone base flares
+     back out wider than the neck -> tapers to a small flat tip with a
+     small hole punched through its face. ---- */
   conical: {
     label:'Conical', tag:'CONICAL',
     icon:`<path d="M9 5 L15 5 L20 19 L4 19 Z"></path>`,
-    control:{ length:1.00, diaProximal:0.30, diaDistal:0.15, wallThickness:0.05 },
+    control:{ wallThickness:0.03,
+              baseFlangeDiameter:0.50, baseFlangeLength:0.15,
+              neckDiameter:0.20, neckLength:0.16,
+              coneBaseDiameter:0.30, coneLength:0.28, tipDiameter:0.10,
+              tipHoleDiameter:0.05,
+              flangeHoleDiameter:0.06, flangeHoleCount:2, flangeHoleSpread:110 },
     params:[
-      {key:'length', label:'Length', min:0.3, max:3.0, step:0.01, unit:'mm'},
-      {key:'diaProximal', label:'Opening 1 (proximal Ø)', min:0.05, max:1.0, step:0.01, unit:'mm'},
-      {key:'diaDistal', label:'Opening 2 (distal Ø)', min:0.05, max:1.0, step:0.01, unit:'mm'},
-      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.25, step:0.005, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.005, max:0.15, step:0.005, unit:'mm'},
+      {key:'baseFlangeDiameter', label:'Base flange Ø (1st cylinder)', min:0.1, max:1.2, step:0.01, unit:'mm'},
+      {key:'baseFlangeLength', label:'Base flange length', min:0.02, max:0.4, step:0.01, unit:'mm'},
+      {key:'neckDiameter', label:'Neck Ø (2nd cylinder)', min:0.05, max:0.8, step:0.01, unit:'mm'},
+      {key:'neckLength', label:'Neck length', min:0, max:0.6, step:0.01, unit:'mm'},
+      {key:'coneBaseDiameter', label:'Cone base Ø (flares past neck)', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'coneLength', label:'Cone length', min:0.05, max:1.2, step:0.01, unit:'mm'},
+      {key:'tipDiameter', label:'Tip flat Ø', min:0.02, max:0.6, step:0.01, unit:'mm'},
+      {key:'tipHoleDiameter', label:'Tip hole Ø', min:0, max:0.4, step:0.005, unit:'mm'},
+      {key:'flangeHoleDiameter', label:'Cone hole Ø', min:0, max:0.2, step:0.005, unit:'mm'},
+      {key:'flangeHoleCount', label:'Cone hole count', min:0, max:6, step:1, unit:''},
+      {key:'flangeHoleSpread', label:'Cone hole spread (same face)', min:20, max:180, step:1, unit:'\u00b0'},
     ],
     build(v){
-      const curve = new THREE.LineCurve3(new THREE.Vector3(-v.length/2,0,0), new THREE.Vector3(v.length/2,0,0));
+      const total = v.baseFlangeLength + v.neckLength + v.coneLength;
+      const curve = new THREE.LineCurve3(new THREE.Vector3(-total/2,0,0), new THREE.Vector3(total/2,0,0));
+      const flangeFrac = total>0 ? clamp(v.baseFlangeLength/total,0,1) : 0;
+      const neckFrac   = total>0 ? clamp((v.baseFlangeLength+v.neckLength)/total,0,1) : flangeFrac;
+
+      function coneRadiusAt(u){
+        if(u < flangeFrac) return v.baseFlangeDiameter/2;
+        if(u < neckFrac)   return v.neckDiameter/2;
+        const t = neckFrac<1 ? (u-neckFrac)/(1-neckFrac) : 0;
+        return THREE.MathUtils.lerp(v.coneBaseDiameter/2, v.tipDiameter/2, t);
+      }
+      function coneInnerAt(u){
+        if(u < flangeFrac) return v.baseFlangeDiameter/2 - v.wallThickness;
+        if(u < neckFrac)   return v.neckDiameter/2 - v.wallThickness;
+        const t = neckFrac<1 ? (u-neckFrac)/(1-neckFrac) : 0;
+        // wall blends from normal thickness at the cone's base down to a
+        // small fixed opening (tipHoleDiameter) right at the flat tip —
+        // this is what reads as "a small hole punched in the tip".
+        return THREE.MathUtils.lerp(v.coneBaseDiameter/2 - v.wallThickness, v.tipHoleDiameter/2, t);
+      }
+
+      // Radial through-hole(s) drilled into the CONE wall itself (per the
+      // reference photo — the hole sits on the sloped cone body, a short
+      // way up from where the cone flares out past the neck, not on the
+      // bottom flange cylinder). Positioned as a fraction of the way up
+      // the cone segment, clustered within flangeHoleSpread degrees on
+      // one face so multiple holes read as sitting together, not spread
+      // around the back.
+      const fHoleR = Math.max(0, v.flangeHoleDiameter/2);
+      const fHoleN = Math.max(0, Math.round(v.flangeHoleCount));
+      const coneHoleU = neckFrac + (1-neckFrac)*0.28; // a short way up the cone from the neck
+      const coneHoleRadiusAtU = Math.max(coneRadiusAt(coneHoleU), 0.02);
+      const fHoleUHalfWidth = total>0 ? Math.max(fHoleR*1.2, 0.01)/total : 0;
+      const fHoleThetaWidth = clamp(fHoleR/coneHoleRadiusAtU, 0.12, 1.4);
+      const spreadRad = THREE.MathUtils.degToRad(v.flangeHoleSpread);
+      const holeThetas = [];
+      for(let k=0;k<fHoleN;k++){
+        const c = fHoleN>1 ? -spreadRad/2 + spreadRad*(k/(fHoleN-1)) : 0;
+        holeThetas.push(c);
+      }
+      function flangeHoleTest(u, theta){
+        if(fHoleR<=0 || holeThetas.length===0 || fHoleUHalfWidth<=0) return false;
+        const du = Math.abs(u-coneHoleU);
+        if(du>=fHoleUHalfWidth) return false;
+        for(const c of holeThetas){
+          let dth = Math.abs(theta-c); if(dth>Math.PI) dth = 2*Math.PI-dth;
+          if(dth<fHoleThetaWidth) return true;
+        }
+        return false;
+      }
+
       return buildHollowTube(curve, {
-        outerFn: u => THREE.MathUtils.lerp(v.diaProximal/2, v.diaDistal/2, u),
-        innerFn: u => THREE.MathUtils.lerp(v.diaProximal/2, v.diaDistal/2, u) - v.wallThickness
+        segments: 150, radial: 72,
+        outerFn: (u)=> Math.max(0.012, coneRadiusAt(u)),
+        innerFn: (u)=> Math.max(0, coneInnerAt(u)),
+        holeTest: flangeHoleTest
       });
     },
     derived(v){
-      const steep = Math.atan2(Math.abs(v.diaProximal-v.diaDistal)/2, v.length) * 180/Math.PI;
-      return { 'Taper angle': steep.toFixed(1)+' deg', 'Taper ratio': (v.diaProximal/v.diaDistal).toFixed(2)+' : 1' };
+      const steep = Math.atan2(Math.abs(v.coneBaseDiameter-v.tipDiameter)/2, v.coneLength) * 180/Math.PI;
+      return {
+        'Taper angle': steep.toFixed(1)+' deg',
+        'Overall length': (v.baseFlangeLength+v.neckLength+v.coneLength).toFixed(3)+' mm',
+        'Flange / neck / cone-base Ø': v.baseFlangeDiameter.toFixed(2)+' / '+v.neckDiameter.toFixed(2)+' / '+v.coneBaseDiameter.toFixed(2)+' mm',
+        'Tip hole Ø': v.tipHoleDiameter.toFixed(3)+' mm',
+        'Cone holes': (v.flangeHoleDiameter>0 ? Math.round(v.flangeHoleCount) : 0)+''
+      };
     }
   },
 
+  /* ---- CRESCENT: curved fenestrated tube, per reference photo ---- */
   crescent: {
     label:'Crescent', tag:'CRESCENT',
     icon:`<path d="M17 4a9 9 0 1 0 0 16 7 7 0 1 1 0-16Z"></path>`,
-    control:{ arcRadius:0.685, openingAngle:110, tubeDiameter:0.30, wallThickness:0.05 },
+    control:{ arcRadius:0.685, openingAngle:110, tubeDiameter:0.30, wallThickness:0.05,
+              windowCount:5, windowLength:0.07, windowWidth:55 },
     params:[
       {key:'arcRadius', label:'Arc radius', min:0.2, max:3.0, step:0.005, unit:'mm'},
       {key:'openingAngle', label:'Opening angle', min:10, max:180, step:1, unit:'\u00b0'},
       {key:'tubeDiameter', label:'Tube outer Ø', min:0.05, max:1.0, step:0.01, unit:'mm'},
       {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.2, step:0.005, unit:'mm'},
+      {key:'windowCount', label:'Number of windows (holes)', min:0, max:10, step:1, unit:''},
+      {key:'windowLength', label:'Window length', min:0.02, max:0.18, step:0.005, unit:'frac'},
+      {key:'windowWidth', label:'Window angular width', min:15, max:100, step:1, unit:'\u00b0'},
     ],
     build(v){
       const curve = new ArcCurve3(v.arcRadius, THREE.MathUtils.degToRad(v.openingAngle));
+      const baseR = v.tubeDiameter/2;
+      const innerR = Math.max(0.001, baseR - v.wallThickness);
+      const n = Math.max(0, Math.round(v.windowCount));
+      const marginStart = 0.14, marginEnd = 0.86;
+      const usable = Math.max(0.001, marginEnd-marginStart);
+      const halfLen = v.windowLength/2;
+      const halfAng = THREE.MathUtils.degToRad(v.windowWidth/2);
+      const windows = [];
+      for(let i=0;i<n;i++){
+        const center = n>1 ? marginStart + usable*(i/(n-1)) : marginStart + usable/2;
+        windows.push(center);
+      }
+      function windowHoleTest(u, theta){
+        let angDist = Math.abs(theta); if(angDist>Math.PI) angDist = 2*Math.PI-angDist;
+        if(angDist>=halfAng) return false;
+        for(const c of windows){
+          if(Math.abs(u-c) < halfLen) return true;
+        }
+        return false;
+      }
       return buildHollowTube(curve, {
-        outerFn: ()=> v.tubeDiameter/2,
-        innerFn: ()=> v.tubeDiameter/2 - v.wallThickness
+        segments: 160, radial: 72,
+        outerFn: ()=> baseR,
+        innerFn: ()=> innerR,
+        holeTest: windowHoleTest
       });
     },
     derived(v){
       const rad = THREE.MathUtils.degToRad(v.openingAngle);
       const chord = 2*v.arcRadius*Math.sin(rad/2);
       const sagitta = v.arcRadius*(1-Math.cos(rad/2));
-      return { 'Opening width (chord)': chord.toFixed(3)+' mm', 'Depth (sagitta)': sagitta.toFixed(3)+' mm' };
+      return {
+        'Opening width (chord)': chord.toFixed(3)+' mm',
+        'Depth (sagitta)': sagitta.toFixed(3)+' mm'
+      };
     }
   },
 
+  /* ---- L-SHAPED: ribbed blade bending ~90° into a round socket,
+     per reference photo (flat scalloped blade curving up into a
+     cylindrical hub — a true L-shaped bend, not a straight taper). ---- */
   lshaped: {
-    label:'L-shaped', tag:'L-SHAPED',
-    icon:`<path d="M6 4 L6 20 L20 20"></path>`,
-    control:{ length1:0.45, length2:0.30, outerDiameter:0.30, wallThickness:0.05, cornerRadius:0.25 },
+    label:'L-Shaped', tag:'L-SHAPED',
+    icon:`<path d="M6 4v10a4 4 0 0 0 4 4h9"></path><circle cx="6" cy="4" r="2"></circle>`,
+    control:{ bladeLength:0.85, bladeWidth:0.32, bladeDepth:0.14,
+              ridgeCount:4, ridgeHeight:0.05, holeDiameter:0.045,
+              bendRadius:0.18, bendAngle:90,
+              socketDiameter:0.34, wallThickness:0.05, socketLength:0.32 },
     params:[
-      {key:'length1', label:'Length — arm 1', min:0.15, max:1.5, step:0.01, unit:'mm'},
-      {key:'length2', label:'Length — arm 2', min:0.15, max:1.5, step:0.01, unit:'mm'},
-      {key:'outerDiameter', label:'Outer diameter', min:0.05, max:0.8, step:0.01, unit:'mm'},
-      {key:'wallThickness', label:'Wall thickness', min:0.01, max:0.2, step:0.005, unit:'mm'},
-      {key:'cornerRadius', label:'Corner (bend) radius', min:0.05, max:0.6, step:0.01, unit:'mm'},
+      {key:'bladeLength', label:'Blade length', min:0.2, max:2.4, step:0.01, unit:'mm'},
+      {key:'bladeWidth', label:'Blade width', min:0.05, max:0.9, step:0.01, unit:'mm'},
+      {key:'bladeDepth', label:'Blade depth', min:0.02, max:0.5, step:0.01, unit:'mm'},
+      {key:'ridgeCount', label:'Number of bumps (rivets)', min:0, max:10, step:1, unit:''},
+      {key:'ridgeHeight', label:'Ridge/dome height', min:0, max:0.15, step:0.005, unit:'mm'},
+      {key:'holeDiameter', label:'Flute hole Ø (through each dome)', min:0, max:0.15, step:0.005, unit:'mm'},
+      {key:'bendRadius', label:'Bend radius', min:0.02, max:0.6, step:0.01, unit:'mm'},
+      {key:'bendAngle', label:'Bend angle', min:20, max:150, step:1, unit:'\u00b0'},
+      {key:'socketDiameter', label:'Socket Ø', min:0.05, max:1.0, step:0.01, unit:'mm'},
+      {key:'wallThickness', label:'Socket wall thickness', min:0.01, max:0.25, step:0.005, unit:'mm'},
+      {key:'socketLength', label:'Socket length', min:0.05, max:1.2, step:0.01, unit:'mm'},
     ],
     build(v){
-      const curve = buildLPath(v.length1, v.length2, v.cornerRadius);
+      const curve = new LShapeCurve3(v.bladeLength, v.bendRadius, v.socketLength, THREE.MathUtils.degToRad(v.bendAngle));
+      const tBladeEnd = curve.tBladeEnd;
+      const tArcEnd   = curve.tArcEnd;
+      const tipFrac = 0.12; // fraction of the BLADE (not whole curve) that tapers to a tip
+      const n = Math.max(0, Math.round(v.ridgeCount));
+      const rx = v.bladeWidth/2, ry = v.bladeDepth/2;
+      const socketR = v.socketDiameter/2;
+      const lumenR = Math.max(0, socketR - v.wallThickness);
+      // Internal channel running through the blade, connecting the rivet
+      // holes to the socket's hollow bore (per: "holes connect to the
+      // cylinder arm"). It tapers to solid near the pointed tip, same as
+      // the outer taper, so the tip itself stays solid.
+      const bladeChannelR = Math.min(lumenR, ry*0.42);
+
+      // The blade+bend curve is flat (lies in one plane), so its Frenet
+      // frame has one axis that stays FIXED the whole way (out-of-plane,
+      // "B" — this is what bladeDepth/ry rides on) and one axis that
+      // ROTATES as the curve turns through the bend (in-plane, "N" — this
+      // is what bladeWidth/rx rides on). Ridges must be pinned to the
+      // fixed B axis (theta = 90°) so they stay on the same flat face the
+      // whole length of the blade. Pinning them to N (theta = 0°, the old
+      // bug) made them trace the rotating axis instead — that's what
+      // produced the drill-bit/auger spiral through the bend.
+      const ridgeAxis = Math.PI/2;
+
+      // Pressure/vent holes sit AT each rivet's dome peak (not in the
+      // flat groove between rivets) and open straight down into the
+      // hollow channel — a raised dome with a hole through it, flute-
+      // tonehole style.
+      const holeR = Math.max(0, v.holeDiameter/2);
+      const period = n>0 ? 1/n : 0;
+      const ridgeCenters = []; // bump/dome peaks, in uBladeLocal units (0..1)
+      if(n>0){
+        for(let i=0;i<n;i++){
+          ridgeCenters.push(tipFrac + (1-tipFrac)*((i+0.5)*period));
+        }
+      }
+      const holeUHalfWidth  = v.bladeLength>0 ? Math.max(holeR*1.1, 0.01)/v.bladeLength : 0;
+      const holeThetaWidth  = clamp(holeR/Math.max(ry,0.02), 0.12, 1.4);
+      function ridgeHoleTest(uGlobal, theta){
+        if(holeR<=0 || ridgeCenters.length===0 || holeUHalfWidth<=0) return false;
+        if(uGlobal > tBladeEnd) return false; // holes only live in the blade zone
+        const uBladeLocal = tBladeEnd>0 ? uGlobal/tBladeEnd : 0;
+        if(uBladeLocal<=tipFrac) return false;
+        let dth = Math.abs(theta - ridgeAxis); if(dth>Math.PI) dth = 2*Math.PI-dth;
+        if(dth>=holeThetaWidth) return false;
+        for(const c of ridgeCenters){
+          if(Math.abs(uBladeLocal-c) < holeUHalfWidth) return true;
+        }
+        return false;
+      }
+
+      function bladeRadius(uBladeLocal, theta){
+        const tipTaper = smoothstep(clamp(uBladeLocal/tipFrac,0,1));
+        let rBlade = 1/Math.sqrt( Math.pow(Math.cos(theta)/Math.max(rx,0.005),2) + Math.pow(Math.sin(theta)/Math.max(ry,0.005),2) );
+        let ridgeBump = 0;
+        if(n>0 && uBladeLocal>tipFrac){
+          const zoneT = (uBladeLocal-tipFrac)/(1-tipFrac);
+          const period = 1/n;
+          const localT = (zoneT % period)/period;
+          const bumpShape = Math.pow(Math.sin(localT*Math.PI), 2);
+          const topFacing = Math.max(0, Math.sin(theta)); // fixed B axis, not rotating N
+          ridgeBump = v.ridgeHeight*bumpShape*topFacing;
+        }
+        let r = rBlade*tipTaper + ridgeBump;
+        return Math.max(0.015, r);
+      }
+
       return buildHollowTube(curve, {
-        outerFn: ()=> v.outerDiameter/2,
-        innerFn: ()=> v.outerDiameter/2 - v.wallThickness
+        segments: 160, radial: 64,
+        holeTest: ridgeHoleTest,
+        outerFn: (u,theta)=>{
+          if(u <= tBladeEnd){
+            const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
+            return bladeRadius(uBladeLocal, theta);
+          } else if(u <= tArcEnd){
+            const bladeTipR = bladeRadius(1, theta);
+            const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
+            return THREE.MathUtils.lerp(bladeTipR, socketR, blend);
+          } else {
+            return socketR;
+          }
+        },
+        innerFn: (u,theta)=>{
+          if(u <= tBladeEnd){
+            const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
+            const tipTaper = smoothstep(clamp(uBladeLocal/tipFrac,0,1));
+            return bladeChannelR*tipTaper; // hollow channel, solid only right at the tip
+          } else if(u <= tArcEnd){
+            const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
+            return THREE.MathUtils.lerp(bladeChannelR, lumenR, blend);
+          } else {
+            return lumenR;
+          }
+        }
       });
     },
-    derived(v){ return { 'Total arm-to-arm length': (v.length1+v.length2).toFixed(3)+' mm' }; }
+    derived(v){
+      const overall = v.bladeLength + v.bendRadius*THREE.MathUtils.degToRad(v.bendAngle) + v.socketLength;
+      const n = Math.max(0, Math.round(v.ridgeCount));
+      const holes = v.holeDiameter>0 ? n : 0;
+      return {
+        'Bend angle': v.bendAngle.toFixed(0)+' deg',
+        'Overall length (unrolled)': overall.toFixed(3)+' mm',
+        'Lumen diameter': Math.max(0, v.socketDiameter-2*v.wallThickness).toFixed(3)+' mm',
+        'Flute holes': holes+' through domes, open to lumen'
+      };
+    }
   }
 };
 
@@ -545,30 +748,28 @@ const SHAPES = {
    STATE + UI WIRING
    ============================================================ */
 let currentShapeKey = 'tubular';
-let values = {}; // live editable values, per shape
+let values = {};
 
 function cloneControl(key){ return JSON.parse(JSON.stringify(SHAPES[key].control)); }
 Object.keys(SHAPES).forEach(k => values[k] = cloneControl(k));
 
-const shapeTree = document.getElementById('shapeTree');
+const shapeGrid = document.getElementById('shapeGrid');
 Object.entries(SHAPES).forEach(([key, def])=>{
-  const leaf = document.createElement('div');
-  leaf.className = 'tree-leaf' + (key===currentShapeKey ? ' active' : '');
-  leaf.dataset.key = key;
-  leaf.innerHTML = `<svg viewBox="0 0 24 24">${def.icon}</svg><span>${def.label}</span>`;
-  leaf.addEventListener('click', ()=> selectShape(key));
-  shapeTree.appendChild(leaf);
+  const btn = document.createElement('button');
+  btn.className = 'shape-btn' + (key===currentShapeKey ? ' active' : '');
+  btn.dataset.key = key;
+  btn.innerHTML = `<svg viewBox="0 0 24 24">${def.icon}</svg><span>${def.label}</span>`;
+  btn.addEventListener('click', ()=> selectShape(key));
+  shapeGrid.appendChild(btn);
 });
 
 function selectShape(key){
   currentShapeKey = key;
-  [...shapeTree.children].forEach(b => b.classList.toggle('active', b.dataset.key===key));
-  document.getElementById('shapeTag').textContent = SHAPES[key].label;
-  document.getElementById('crumbShape').textContent = SHAPES[key].label;
+  [...shapeGrid.children].forEach(b => b.classList.toggle('active', b.dataset.key===key));
+  document.getElementById('shapeTag').textContent = SHAPES[key].tag;
   renderParams();
   regenerate();
   fitCameraToGeometry(mesh.geometry);
-  logLine(`Switched to ${SHAPES[key].label} — loaded control-set dimensions.`);
 }
 
 function decimalsFor(step){
@@ -587,34 +788,19 @@ function renderParams(){
     const row = document.createElement('div');
     row.className = 'param-row';
     row.innerHTML = `
-      <span class="flabel">${p.label}</span>
-      <div class="field-inline">
-        <input type="range" id="in-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v[p.key]}">
-        <input type="text" class="num-box" id="num-${p.key}" value="${v[p.key].toFixed(dec)}">
-        <span class="unit-tag">${p.unit}</span>
+      <div class="top">
+        <label>${p.label}</label>
+        <span class="val" id="val-${p.key}">${v[p.key].toFixed(dec)}${p.unit?(' '+p.unit):''}</span>
       </div>
+      <input type="range" id="in-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}" value="${v[p.key]}">
     `;
     container.appendChild(row);
-    const slider = row.querySelector(`#in-${p.key}`);
-    const numBox = row.querySelector(`#num-${p.key}`);
-
-    slider.addEventListener('input', ()=>{
-      v[p.key] = parseFloat(slider.value);
-      numBox.value = v[p.key].toFixed(dec);
+    const input = row.querySelector('input');
+    input.addEventListener('input', ()=>{
+      v[p.key] = parseFloat(input.value);
+      document.getElementById(`val-${p.key}`).textContent = `${v[p.key].toFixed(dec)}${p.unit?(' '+p.unit):''}`;
       regenerate();
     });
-
-    function commitNumBox(){
-      let val = parseFloat(numBox.value);
-      if(isNaN(val)) val = v[p.key];
-      val = Math.max(p.min, Math.min(p.max, val));
-      v[p.key] = val;
-      numBox.value = val.toFixed(dec);
-      slider.value = val;
-      regenerate();
-    }
-    numBox.addEventListener('change', commitNumBox);
-    numBox.addEventListener('keydown', e=>{ if(e.key==='Enter'){ numBox.blur(); } });
   });
   updateDerived();
 }
@@ -631,13 +817,8 @@ function updateDerived(){
 function fitCameraToGeometry(geo){
   geo.computeBoundingSphere();
   const r = geo.boundingSphere.radius || 0.5;
-  radius = Math.max(0.6, r*3.0);
+  radius = Math.max(0.5, r*3.0);
   updateCam();
-}
-
-function updateTriCount(geo){
-  const n = geo.attributes.position.count / 3;
-  document.getElementById('triCount').textContent = `· ${n.toLocaleString()} facets`;
 }
 
 function regenerate(){
@@ -647,7 +828,6 @@ function regenerate(){
   mesh.geometry.dispose();
   mesh.geometry = geo;
   updateDerived();
-  updateTriCount(geo);
 }
 
 function firstBuild(){
@@ -656,24 +836,10 @@ function firstBuild(){
   const geo = def.build(v);
   mesh.geometry = geo;
   fitCameraToGeometry(geo);
-  updateTriCount(geo);
-}
-
-/* ---- message log (COMSOL-style "Messages" tab) ---- */
-function logLine(msg, ok=true){
-  const body = document.getElementById('logBody');
-  const line = document.createElement('div');
-  line.className = ok ? 'ok-line' : '';
-  const t = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-  line.textContent = `[${t}] ${msg}`;
-  body.appendChild(line);
-  body.scrollTop = body.scrollHeight;
 }
 
 renderParams();
 firstBuild();
-logLine(`Model Builder ready. Control-set dimensions loaded from source STL files (1 unit = 1 mm).`);
-logLine(`Geometry 1 built — ${SHAPES[currentShapeKey].label}.`);
 
 /* ============================================================
    EXPORT / RESET
@@ -714,7 +880,7 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   const v = values[currentShapeKey];
-  const stamp = Object.entries(v).map(([k,val])=>`${k}-${val}`).join('_').slice(0,60);
+  const stamp = Object.entries(v).map(([k,val])=>`${k}-${val}`).join('_').slice(0,70);
   a.href = url;
   a.download = `microstent_${currentShapeKey}_${stamp}.stl`;
   document.body.appendChild(a);
@@ -722,7 +888,6 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
   a.remove();
   URL.revokeObjectURL(url);
   showToast('STL exported ✓');
-  logLine(`Exported ${a.download} — ${mesh.geometry.attributes.position.count/3} facets.`);
 });
 
 document.getElementById('resetBtn').addEventListener('click', ()=>{
@@ -730,7 +895,6 @@ document.getElementById('resetBtn').addEventListener('click', ()=>{
   renderParams();
   regenerate();
   showToast('Reset to control mesh');
-  logLine(`${SHAPES[currentShapeKey].label} reset to control-set dimensions.`);
 });
 </script>
 </body>

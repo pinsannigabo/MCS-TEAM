@@ -468,7 +468,7 @@ const SHAPES = {
               neckDiameter:0.20, neckLength:0.16,
               coneBaseDiameter:0.30, coneLength:0.28, tipDiameter:0.10,
               tipHoleDiameter:0.05,
-              flangeHoleDiameter:0.06, flangeHoleCount:2, flangeHoleSpread:110 },
+              flangeHoleDiameter:0.06, flangeHoleCount:2, flangeHoleSpread:70 },
     params:[
       {key:'wallThickness', label:'Wall thickness', min:0.005, max:0.15, step:0.005, unit:'mm'},
       {key:'baseFlangeDiameter', label:'Base flange Ø (1st cylinder)', min:0.1, max:1.2, step:0.01, unit:'mm'},
@@ -481,7 +481,7 @@ const SHAPES = {
       {key:'tipHoleDiameter', label:'Tip hole Ø', min:0, max:0.4, step:0.005, unit:'mm'},
       {key:'flangeHoleDiameter', label:'Cone hole Ø', min:0, max:0.2, step:0.005, unit:'mm'},
       {key:'flangeHoleCount', label:'Cone hole count', min:0, max:6, step:1, unit:''},
-      {key:'flangeHoleSpread', label:'Cone hole spread (same face)', min:20, max:180, step:1, unit:'\u00b0'},
+      {key:'flangeHoleSpread', label:'Cone hole spread (around)', min:10, max:100, step:5, unit:'%'},
     ],
     build(v){
       const total = v.baseFlangeLength + v.neckLength + v.coneLength;
@@ -505,23 +505,39 @@ const SHAPES = {
         return THREE.MathUtils.lerp(v.coneBaseDiameter/2 - v.wallThickness, v.tipHoleDiameter/2, t);
       }
 
-      // Radial through-hole(s) drilled into the CONE wall itself (per the
-      // reference photo — the hole sits on the sloped cone body, a short
-      // way up from where the cone flares out past the neck, not on the
-      // bottom flange cylinder). Positioned as a fraction of the way up
-      // the cone segment, clustered within flangeHoleSpread degrees on
-      // one face so multiple holes read as sitting together, not spread
-      // around the back.
+      // Radial through-holes drilled into the CONE wall itself (per the
+      // reference photo — holes sit on the sloped cone body, not on the
+      // bottom flange cylinder), spread AROUND the circumference of the
+      // cone at one axial band rather than clustered on a single face.
+      // flangeHoleSpread (%) controls how far around: 100% = evenly
+      // spaced all the way around (360°), lower % = a narrower arc.
       const fHoleR = Math.max(0, v.flangeHoleDiameter/2);
       const fHoleN = Math.max(0, Math.round(v.flangeHoleCount));
-      const coneHoleU = neckFrac + (1-neckFrac)*0.28; // a short way up the cone from the neck
+      const coneHoleU = neckFrac + (1-neckFrac)*0.35; // a short way up the cone from the neck
       const coneHoleRadiusAtU = Math.max(coneRadiusAt(coneHoleU), 0.02);
       const fHoleUHalfWidth = total>0 ? Math.max(fHoleR*1.2, 0.01)/total : 0;
-      const fHoleThetaWidth = clamp(fHoleR/coneHoleRadiusAtU, 0.12, 1.4);
-      const spreadRad = THREE.MathUtils.degToRad(v.flangeHoleSpread);
+      const rawThetaWidth = clamp(fHoleR/coneHoleRadiusAtU, 0.12, 1.4);
+      const spreadFrac = clamp(v.flangeHoleSpread/100, 0.1, 1.0);
+      const totalSpreadRad = spreadFrac * Math.PI * 2;
+      // Quantization guard: with a fixed radial grid, two holes centered
+      // at different angles can snap to a different number of grid cells
+      // (e.g. 4 vs 5) even when given the identical requested width, which
+      // reads as "the holes aren't the same size". Snapping every hole's
+      // width AND center to whole grid-cell multiples guarantees every
+      // hole gets the exact same cell footprint, so sizes match exactly.
+      const coneRadialSegments = 108; // must match the `radial` value passed to buildHollowTube below
+      const deltaTheta = (Math.PI*2) / coneRadialSegments;
+      const fHoleThetaWidth = Math.max(1, Math.round(rawThetaWidth/deltaTheta)) * deltaTheta;
+      // Evenly divide the spread arc into fHoleN equal slices and center a
+      // hole in each slice — this keeps spacing (and therefore size, since
+      // every hole uses the same thetaWidth) uniform even when the spread
+      // wraps a full 360°, where the old center-to-center/(n-1) formula
+      // double-counted the seam and left an uneven gap.
       const holeThetas = [];
+      const thetaStep = fHoleN>0 ? totalSpreadRad/fHoleN : 0;
       for(let k=0;k<fHoleN;k++){
-        const c = fHoleN>1 ? -spreadRad/2 + spreadRad*(k/(fHoleN-1)) : 0;
+        let c = -totalSpreadRad/2 + thetaStep*(k+0.5);
+        c = Math.round(c/deltaTheta) * deltaTheta; // snap center to the same grid every hole shares
         holeThetas.push(c);
       }
       function flangeHoleTest(u, theta){
@@ -536,7 +552,7 @@ const SHAPES = {
       }
 
       return buildHollowTube(curve, {
-        segments: 150, radial: 72,
+        segments: 150, radial: coneRadialSegments,
         outerFn: (u)=> Math.max(0.012, coneRadiusAt(u)),
         innerFn: (u)=> Math.max(0, coneInnerAt(u)),
         holeTest: flangeHoleTest
@@ -578,16 +594,20 @@ const SHAPES = {
       const usable = Math.max(0.001, marginEnd-marginStart);
       const halfLen = v.windowLength/2;
       const halfAng = THREE.MathUtils.degToRad(v.windowWidth/2);
+      // Every window position gets a hole on BOTH the top and directly
+      // opposite it on the bottom (same axial position, 180° apart on
+      // the tube's fixed out-of-plane axis) — not one side per position.
       const windows = [];
       for(let i=0;i<n;i++){
         const center = n>1 ? marginStart + usable*(i/(n-1)) : marginStart + usable/2;
         windows.push(center);
       }
       function windowHoleTest(u, theta){
-        let angDist = Math.abs(theta); if(angDist>Math.PI) angDist = 2*Math.PI-angDist;
-        if(angDist>=halfAng) return false;
         for(const c of windows){
-          if(Math.abs(u-c) < halfLen) return true;
+          if(Math.abs(u-c) >= halfLen) continue;
+          let angTop = Math.abs(theta-Math.PI/2);  if(angTop>Math.PI) angTop=2*Math.PI-angTop;
+          let angBot = Math.abs(theta+Math.PI/2);  if(angBot>Math.PI) angBot=2*Math.PI-angBot;
+          if(angTop<halfAng || angBot<halfAng) return true;
         }
         return false;
       }

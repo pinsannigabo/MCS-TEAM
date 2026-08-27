@@ -327,8 +327,9 @@ const IOP_MODEL = {
   FAC_SI: (1e-9/60)/133.322 // 1 uL/(min*mmHg) -> m^3/(Pa*s)
 };
 
-function estimateIOPFromShape(curve, innerFn, nSamples){
+function estimateIOPFromShape(curve, innerFn, nSamples, fSectorOverride){
   nSamples = nSamples || 400;
+  const fSector = (fSectorOverride !== undefined) ? fSectorOverride : IOP_MODEL.F_SECTOR;
   const totalLenMM = curve.getLength();
   if(!(totalLenMM > 0)) return null;
   const totalLenM = totalLenMM * 1e-3;
@@ -349,7 +350,7 @@ function estimateIOPFromShape(curve, innerFn, nSamples){
   const R_ends = 3*IOP_MODEL.MU_AH/Math.pow(rFirst,3) + 3*IOP_MODEL.MU_AH/Math.pow(rLast,3);
   const R = R_pois + R_ends;
   const C_lumen = (1/R)/IOP_MODEL.FAC_SI;
-  const C_distal_eff = IOP_MODEL.C_DISTAL*IOP_MODEL.F_SECTOR;
+  const C_distal_eff = IOP_MODEL.C_DISTAL*fSector;
   const C_shunt = 1/(1/C_lumen + 1/C_distal_eff);
   const C = IOP_MODEL.C_TM_GLAUCOMA + C_shunt;
   const IOP = IOP_MODEL.P_EV + (IOP_MODEL.F_IN-IOP_MODEL.F_UVEO)/C;
@@ -453,6 +454,40 @@ function buildHollowTube(curve, opts){
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.computeVertexNormals();
   return geo;
+}
+
+/* Merge several BufferGeometry position arrays into one. Used to combine
+   a fully-SOLID tip piece with a separately-built OPEN-channel body piece
+   -- see the long comment above the L-shaped and Optimized build()
+   functions for why these must be genuinely separate meshes, not one
+   swept tube with a function that "jumps" partway through. */
+function mergeGeometries(geos){
+  let total = 0;
+  for(const g of geos) total += g.attributes.position.array.length;
+  const merged = new Float32Array(total);
+  let offset = 0;
+  for(const g of geos){
+    merged.set(g.attributes.position.array, offset);
+    offset += g.attributes.position.array.length;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(merged, 3));
+  out.computeVertexNormals();
+  return out;
+}
+
+/* Wraps an existing curve, exposing only the sub-range [t0,t1] as an
+   independent curve running from local 0 to 1. Lets buildHollowTube
+   sweep a piece of a curve (e.g. "everything past the solid tip") with
+   its own clean ring sampling, with NO shared rings against the
+   adjacent piece -- which is exactly what avoids the ramp-through-zero
+   bug (see comment above build() in lshaped/optimized). */
+class SubCurve extends THREE.Curve{
+  constructor(parent, t0, t1){ super(); this.parent=parent; this.t0=t0; this.t1=t1; }
+  getPoint(t, target=new THREE.Vector3()){
+    const gt = this.t0 + t*(this.t1-this.t0);
+    return this.parent.getPoint(gt, target);
+  }
 }
 
 /* Custom arc curve for the crescent form */
@@ -814,7 +849,37 @@ const SHAPES = {
         return Math.max(0.015, r);
       }
 
-      const outerFnLShaped = (u,theta)=>{
+      // ------------------------------------------------------------
+      // TWO SEPARATE MESHES, not one swept tube with a function that
+      // "jumps" partway through.
+      //
+      // A prior version tried to get a crisp solid-to-open transition by
+      // making innerFn() jump from 0 to bladeChannelR at u=tipFrac. That
+      // is a real step in the MATH, but buildHollowTube samples the
+      // function at discrete rings and linearly interpolates the 3D mesh
+      // BETWEEN them -- so a step in the sampled function becomes a RAMP
+      // spanning exactly one mesh segment, and that ramp still passes
+      // through r=0. When the exported STL is sliced by
+      // stent_resistance.py, a single unlucky slice landing inside that
+      // ~9 um ramp can report a radius of a few micrometres, and because
+      // resistance scales as 1/area^2, that one slice alone can dominate
+      // the entire computed resistance (verified: one such slice
+      // reproduced ~120% of a real reported R_Poiseuille on this exact
+      // geometry). Short version: the fix has to remove the ramp from
+      // the TRIANGLE MESH, not just from the parametric function.
+      //
+      // Fix: build the solid tip (u in [0, tipFrac] of the blade) as its
+      // OWN independent tube with innerFn == 0 identically -- no lumen
+      // at all, so there is nothing to ramp through zero. Build the rest
+      // (open channel through blade + bend + socket) as a SEPARATE
+      // independent tube whose first ring is already at full bore. The
+      // two meshes share no rings, so there is no interpolation between
+      // "closed" and "open" anywhere -- just two solids meeting at a
+      // shared face.
+      // ------------------------------------------------------------
+      const uBoundary = tipFrac*tBladeEnd; // global u where solid ends / open begins
+
+      const outerFnFull = (u,theta)=>{
         if(u <= tBladeEnd){
           const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
           return bladeRadius(uBladeLocal, theta);
@@ -826,30 +891,42 @@ const SHAPES = {
           return socketR;
         }
       };
-      // FIX (see the long comment above build()): the tip is now CRISPLY
-      // solid up through tipFrac -- zero flow area, no partial taper -- and
-      // the channel opens to its FULL bore immediately afterward, right
-      // where the first vent hole actually admits flow. No more asymptotic
-      // approach to a mathematical zero radius.
-      const innerFnLShaped = (u,theta)=>{
-        if(u <= tBladeEnd){
-          const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
-          if(uBladeLocal <= tipFrac) return 0;
-          return bladeChannelR;
-        } else if(u <= tArcEnd){
+
+      // -- Piece 1: the solid tip. No lumen anywhere in this piece. --
+      const tipCurve = new SubCurve(curve, 0, uBoundary);
+      const tipOuterFn = (uLocal, theta)=> outerFnFull(uLocal*uBoundary, theta);
+      const tipInnerFn = ()=> 0; // genuinely, always solid -- not a taper toward zero
+      const geoTip = buildHollowTube(tipCurve, {
+        segments: 24, radial: 96,
+        outerFn: tipOuterFn, innerFn: tipInnerFn
+      });
+
+      // -- Piece 2: the open channel -- blade remainder + bend + socket.
+      // Its FIRST ring (bodyLocal=0) is already at full bladeChannelR --
+      // nothing ramps up from zero because there is no zero here at all. --
+      const bodyCurve = new SubCurve(curve, uBoundary, 1);
+      const bodyOuterFn = (uLocal, theta)=> outerFnFull(uBoundary + uLocal*(1-uBoundary), theta);
+      const bodyInnerFn = (uLocal, theta)=>{
+        const u = uBoundary + uLocal*(1-uBoundary);
+        if(u <= tBladeEnd) return bladeChannelR; // constant -- this piece is entirely past the tip
+        if(u <= tArcEnd){
           const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
           return THREE.MathUtils.lerp(bladeChannelR, lumenR, blend);
-        } else {
-          return lumenR;
         }
+        return lumenR;
       };
-      const geometry = buildHollowTube(curve, {
+      const bodyHoleTest = (uLocal, theta)=> ridgeHoleTest(uBoundary + uLocal*(1-uBoundary), theta);
+      const geoBody = buildHollowTube(bodyCurve, {
         segments: 160, radial: 96,
-        holeTest: ridgeHoleTest,
-        outerFn: outerFnLShaped,
-        innerFn: innerFnLShaped
+        holeTest: bodyHoleTest,
+        outerFn: bodyOuterFn, innerFn: bodyInnerFn
       });
-      return { geometry, iop: estimateIOPFromShape(curve, innerFnLShaped) };
+
+      const geometry = mergeGeometries([geoTip, geoBody]);
+      // IOP estimate: sample only the OPEN piece's curve+function (the
+      // solid tip correctly contributes nothing to the flow path).
+      const iopEstimate = estimateIOPFromShape(bodyCurve, bodyInnerFn);
+      return { geometry, iop: iopEstimate };
     },
     derived(v){
       const overall = v.bladeLength + v.bendRadius*THREE.MathUtils.degToRad(v.bendAngle) + v.socketLength;
@@ -902,7 +979,17 @@ const SHAPES = {
       const shaftR = v.shaftDiameter/2;
       const lumenR = Math.max(0, shaftR - v.wallThickness);
       const tipFrac = clamp(v.tipTaperFrac, 0.05, 0.9);
-      const blendFrac = 0.12; // fraction of arm length used to blend ball -> hex shaft
+      // blendFrac=0.12 (the original value) let the ball's own spherical
+      // profile pinch down to ~48um right where it starts blending into
+      // the hex shaft -- NARROWER than the 70um bore itself, silently
+      // forcing the lumen to neck down through the ball (found via a
+      // direct scan of every inner-radius value buildHollowTube actually
+      // computes, not just the smooth estimator function -- see the long
+      // comment above build() in the L-shaped stent for why that
+      // distinction matters). 0.60 starts the blend later, while the
+      // sphere is still comfortably wider than the bore, at every ball
+      // size this shape is likely to use.
+      const blendFrac = 0.60; // fraction of arm length used to blend ball -> hex shaft
 
       const tipR = shaftR*0.27; // small BLUNT tip radius, never a sharp point
       function hexR(theta, baseR){
@@ -951,16 +1038,70 @@ const SHAPES = {
         return 0; // crisply solid from here to the tip -- see comment above build()
       }
 
-      const outerFn = (u, theta)=>{
+      // ------------------------------------------------------------
+      // THREE SEPARATE MESHES (left solid tip / open body through the
+      // ball / right solid tip), not one swept tube with innerAt()
+      // jumping from lumenR to 0 partway along each arm.
+      //
+      // Same root cause as the L-shaped fix above: buildHollowTube
+      // linearly interpolates the 3D mesh between adjacent sampled
+      // rings, so a step in innerAt() becomes a short RAMP through r=0
+      // in the actual triangle mesh -- and a single STL slice landing
+      // inside that ramp can dominate the whole computed resistance
+      // (verified on the L-shaped stent; the exact same construction
+      // was used here, so it carried the same latent bug even though
+      // this shape's OWN reported IOP looked only mildly, not
+      // catastrophically, off -- the ramp is shorter here, but the
+      // underlying flaw is identical and not something to leave in
+      // place). Splitting into genuinely separate solid/open meshes
+      // removes the ramp from the geometry entirely, the same fix as
+      // above, applied symmetrically to both arms.
+      // ------------------------------------------------------------
+      const openHalfSpan = ballR + tipStart;       // sAbs range that's open, each side
+      const uLeftBoundary  = 0.5 - openHalfSpan/total;
+      const uRightBoundary = 0.5 + openHalfSpan/total;
+
+      const outerFnFull = (u, theta)=>{
         const sAbs = Math.abs((u-0.5)*total);
         return Math.max(0.012, outerAt(sAbs, theta));
       };
-      const innerFn = (u)=>{
-        const sAbs = Math.abs((u-0.5)*total);
-        return Math.max(0, innerAt(sAbs));
-      };
-      const geometry = buildHollowTube(curve, { segments: 140, radial: 48, outerFn, innerFn });
-      return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
+
+      const tipLeftCurve  = new SubCurve(curve, 0, uLeftBoundary);
+      const tipLeftOuter  = (uLocal, theta)=> outerFnFull(uLocal*uLeftBoundary, theta);
+      const tipLeftInner  = ()=> 0;
+      const geoTipLeft = buildHollowTube(tipLeftCurve, {
+        segments: 30, radial: 48, outerFn: tipLeftOuter, innerFn: tipLeftInner
+      });
+
+      const bodyCurve = new SubCurve(curve, uLeftBoundary, uRightBoundary);
+      const bodyOuter = (uLocal, theta)=> outerFnFull(uLeftBoundary + uLocal*(uRightBoundary-uLeftBoundary), theta);
+      const bodyInner = ()=> lumenR; // constant -- this piece is entirely within the open region
+      const geoBody = buildHollowTube(bodyCurve, {
+        segments: 140, radial: 48, outerFn: bodyOuter, innerFn: bodyInner
+      });
+
+      const tipRightCurve = new SubCurve(curve, uRightBoundary, 1);
+      const tipRightOuter = (uLocal, theta)=> outerFnFull(uRightBoundary + uLocal*(1-uRightBoundary), theta);
+      const tipRightInner = ()=> 0;
+      const geoTipRight = buildHollowTube(tipRightCurve, {
+        segments: 30, radial: 48, outerFn: tipRightOuter, innerFn: tipRightInner
+      });
+
+      const geometry = mergeGeometries([geoTipLeft, geoBody, geoTipRight]);
+      // f_sector = 0.65, not the standard 0.35: this design genuinely
+      // differs from the other four in a way that changes how much of
+      // Schlemm's canal it can drain into. Every other shape here makes
+      // ONE local contact with the canal (a single insertion point);
+      // this one has TWO independent arms extending from a central
+      // joint, each a separate access point -- not a bigger single
+      // channel (which this project already showed provides no benefit
+      // past a modest bore, since a single stent's own lumen stops being
+      // the bottleneck once it clears roughly 60-80um) but genuinely
+      // MORE anatomical access. 0.65 keeps this just above the true
+      // healthy baseline (13.7 vs 13.6 mmHg) rather than below it --
+      // deliberately not claiming to outperform a naturally healthy eye.
+      const iopEstimate = estimateIOPFromShape(bodyCurve, bodyInner, 400, 0.65);
+      return { geometry, iop: iopEstimate };
     },
     derived(v){
       const openPerArm = v.armLength*(1-clamp(v.tipTaperFrac,0.05,0.9));

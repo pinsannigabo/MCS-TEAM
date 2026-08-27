@@ -250,7 +250,16 @@ grid.position.y = -0.9;
 scene.add(grid);
 
 const material = new THREE.MeshStandardMaterial({
-  color: 0xB9C4CC, metalness:0.55, roughness:0.32, side: THREE.DoubleSide
+  color: 0xB9C4CC, metalness:0.55, roughness:0.32, side: THREE.DoubleSide,
+  flatShading: true
+  // Genuinely faceted parts (the hex arms) need PER-TRIANGLE normals, not
+  // smoothed ones -- smoothing across a real sharp edge is what produced
+  // the banding/bright-shard artifact. flatShading computes each triangle's
+  // normal from screen-space derivatives at render time, correct for any
+  // topology, no geometry changes required. Round parts (the ball joint,
+  // round tube shafts) are kept looking smooth instead by giving them a
+  // high enough circumferential segment count that their facets are too
+  // small to see, rather than by relying on normal-smoothing to hide them.
 });
 let mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
 scene.add(mesh);
@@ -524,7 +533,7 @@ const SHAPES = {
         return baseR + v.ribHeight*bump;
       };
       const innerFn = ()=> baseR - v.wallThickness;
-      const geometry = buildHollowTube(curve, { outerFn, innerFn });
+      const geometry = buildHollowTube(curve, { outerFn, innerFn, radial: 96 });
       return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
     },
     derived(v){ return {
@@ -697,7 +706,7 @@ const SHAPES = {
       const outerFn = ()=> baseR;
       const innerFn = ()=> innerR;
       const geometry = buildHollowTube(curve, {
-        segments: 160, radial: 72,
+        segments: 160, radial: 96,
         outerFn, innerFn, holeTest: windowHoleTest
       });
       return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
@@ -835,7 +844,7 @@ const SHAPES = {
         }
       };
       const geometry = buildHollowTube(curve, {
-        segments: 160, radial: 64,
+        segments: 160, radial: 96,
         holeTest: ridgeHoleTest,
         outerFn: outerFnLShaped,
         innerFn: innerFnLShaped

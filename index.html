@@ -876,7 +876,7 @@ const SHAPES = {
     label:'Optimized', tag:'OPTIMIZED',
     icon:`<circle cx="12" cy="12" r="2.6"></circle><path d="M9.8 10.8L4 5"></path><path d="M4 5l5-.6M4 5l.6 5"></path><path d="M14.2 10.8L20 5"></path><path d="M20 5l-5-.6M20 5l-.6 5"></path><path d="M9.8 13.2L4 19"></path><path d="M4 19l5 .6M4 19l.6-5"></path><path d="M14.2 13.2L20 19"></path><path d="M20 19l-5 .6M20 19l-.6-5"></path>`,
     control:{ armLength:0.30, ballDiameter:0.20, shaftDiameter:0.26,
-              wallThickness:0.06, tipTaperFrac:0.35, facetDepth:0.30 },
+              wallThickness:0.06, tipTaperFrac:0.58, facetDepth:1.00 },
     params:[
       {key:'armLength', label:'Arm length (each side)', min:0.1, max:0.8, step:0.01, unit:'mm'},
       {key:'ballDiameter', label:'Ball joint Ø', min:0.06, max:0.5, step:0.01, unit:'mm'},
@@ -895,13 +895,30 @@ const SHAPES = {
       const tipFrac = clamp(v.tipTaperFrac, 0.05, 0.9);
       const blendFrac = 0.12; // fraction of arm length used to blend ball -> hex shaft
 
+      const tipR = shaftR*0.27; // small BLUNT tip radius, never a sharp point
       function hexR(theta, baseR){
-        // 6-lobed faceted profile: reads clearly as "faceted, not round"
-        // without a tan()-based true-polygon formula's asymptote risk.
-        return baseR * (1 - v.facetDepth*(1-Math.cos(6*theta))/2);
+        // TRUE flat-faced hexagon (straight facets, sharp edges) --
+        // not a smooth ripple, which reads as a flower/gear instead of
+        // a hex prism. Standard regular-N-gon radius-vs-angle formula:
+        // r(t) = apothem / cos(t), t = angle from the nearest face's
+        // normal direction, |t| <= pi/N. For N=6, |t| <= 30 deg, so
+        // cos(t) stays in [cos(30deg), 1] -- always positive and well
+        // clear of zero, no asymptote to worry about.
+        const N = 6, seg = (2*Math.PI)/N;
+        let t = ((theta % seg) + seg) % seg;
+        t -= seg/2; // centre the flat face at t=0
+        const trueHex = baseR * Math.cos(Math.PI/N) / Math.cos(t);
+        return baseR*(1-v.facetDepth) + trueHex*v.facetDepth;
       }
 
-      // s = signed distance from the model's centre, in mm.
+      // s = signed distance from the model's centre, in mm. The arm
+      // tapers CONTINUOUSLY along its whole length -- wide at the ball,
+      // narrowing all the way to a small blunt tip -- rather than a
+      // constant-width shaft with a short point tacked on at the end.
+      function radiusAt(d){ // d = distance into the arm, 0 at ball surface
+        const t = clamp(d/armLen, 0, 1);
+        return THREE.MathUtils.lerp(shaftR, tipR, t); // straight (linear) taper, a true frustum
+      }
       function outerAt(sAbs, theta){
         if(sAbs <= ballR){
           const sphereR = Math.sqrt(Math.max(0, ballR*ballR - sAbs*sAbs));
@@ -910,16 +927,17 @@ const SHAPES = {
           const t = smoothstep((sAbs-blendStart)/(ballR-blendStart));
           return THREE.MathUtils.lerp(sphereR, hexR(theta, shaftR), t);
         }
-        const d = sAbs - ballR; // distance into the arm, 0 at ball surface
-        const tipStart = armLen*(1-tipFrac);
-        if(d <= tipStart) return hexR(theta, shaftR);
-        const t = tipStart<armLen ? (d-tipStart)/(armLen-tipStart) : 1;
-        return hexR(theta, shaftR) * (1-smoothstep(t)) + 0.012*smoothstep(t); // tapers to a small point
+        const d = sAbs - ballR;
+        return hexR(theta, radiusAt(d));
       }
+      // The open lumen zone ends well before the outer taper narrows down
+      // near lumenR -- tipFrac now controls how much of the (already-
+      // narrowing) arm stays solid, chosen so the wall never gets
+      // dangerously thin right at the crisp cutoff.
+      const tipStart = armLen*(1-tipFrac);
       function innerAt(sAbs){
         if(sAbs <= ballR) return lumenR; // open all the way through the ball
         const d = sAbs - ballR;
-        const tipStart = armLen*(1-tipFrac);
         if(d <= tipStart) return lumenR;
         return 0; // crisply solid from here to the tip -- see comment above build()
       }

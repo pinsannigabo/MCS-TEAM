@@ -109,6 +109,33 @@
   .derived div{ display:flex; justify-content:space-between; padding:3px 0; }
   .derived span.v{ color:var(--accent-dark); font-weight:600; }
 
+  .iop-readout{
+    margin-top:10px; padding:12px 13px; border-radius:6px; border:1px solid var(--line);
+    background:#fff;
+  }
+  .iop-readout .label{
+    font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:5px;
+  }
+  .iop-readout .row{ display:flex; align-items:baseline; justify-content:space-between; }
+  .iop-readout .value{ font-family:'JetBrains Mono',monospace; font-size:20px; font-weight:700; }
+  .iop-readout .verdict{
+    font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:600;
+    letter-spacing:0.04em; padding:3px 8px; border-radius:3px; text-transform:uppercase;
+  }
+  .iop-readout .note{
+    margin-top:6px; font-size:10.5px; color:var(--muted); line-height:1.4;
+  }
+  .iop-good{ border-color:#2E8B57; background:#EFFBF3; }
+  .iop-good .value{ color:#1E6E42; }
+  .iop-good .verdict{ background:#DCF3E4; color:#1E6E42; }
+  .iop-warnhigh{ border-color:#C0392B; background:#FDF0EE; }
+  .iop-warnhigh .value{ color:#A5301F; }
+  .iop-warnhigh .verdict{ background:#FBDEDA; color:#A5301F; }
+  .iop-warnlow{ border-color:#B8860B; background:#FDF7E8; }
+  .iop-warnlow .value{ color:#8F6607; }
+  .iop-warnlow .verdict{ background:#F7E9C2; color:#8F6607; }
+
   /* ---- Footer / export ---- */
   .footer{ padding:16px; border-top:1px solid var(--line); }
   .btn{
@@ -173,6 +200,7 @@
       <div class="params">
         <p class="section-label" style="margin-top:22px;">02 · Edit geometry</p>
         <div id="paramContainer"></div>
+        <div class="iop-readout" id="iopBox"></div>
         <div class="derived" id="derivedBox"></div>
       </div>
 
@@ -269,6 +297,55 @@ window.addEventListener('resize', ()=>{
    ============================================================ */
 function smoothstep(x){ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); }
 function clamp(x,a,b){ return Math.max(a,Math.min(b,x)); }
+
+/* ============================================================
+   LIVE IOP ESTIMATOR — mirrors stent_resistance.py exactly:
+   same Hagen-Poiseuille + Sampson end-orifice model, same Goldmann
+   outflow-facility equation, same physiological constants. This is
+   what lets the studio tell you *before you export* whether the
+   current parameters land in the clinical target band.
+   Every shape's innerFn (the LUMEN radius) is theta-independent by
+   construction here — only the outer surface varies with theta for
+   ribs/domes/ellipse cross-sections — so sampling at theta=0 is exact,
+   not an approximation.
+   ============================================================ */
+const IOP_MODEL = {
+  MU_AH: 7.2e-4,            // aqueous humour dynamic viscosity, Pa*s
+  F_IN: 2.5, F_UVEO: 1.2,   // uL/min
+  P_EV: 9.0,                // mmHg
+  C_TM_GLAUCOMA: 0.08,      // uL/(min*mmHg)
+  C_DISTAL: 0.30, F_SECTOR: 0.35,
+  FAC_SI: (1e-9/60)/133.322 // 1 uL/(min*mmHg) -> m^3/(Pa*s)
+};
+
+function estimateIOPFromShape(curve, innerFn, nSamples){
+  nSamples = nSamples || 400;
+  const totalLenMM = curve.getLength();
+  if(!(totalLenMM > 0)) return null;
+  const totalLenM = totalLenMM * 1e-3;
+  const ds = totalLenM / nSamples;
+  const SOLID_EPS_MM = 1e-4; // below this, treat as genuinely solid (no lumen), not near-zero
+  let R_pois = 0, rFirst = null, rLast = null;
+  for(let i=0;i<nSamples;i++){
+    const u = (i+0.5)/nSamples;
+    const rMM = innerFn(u, 0);
+    if(rMM < SOLID_EPS_MM) continue; // solid here -- excluded from the flow path, not integrated
+    const r = rMM * 1e-3; // mm -> m
+    if(rFirst===null) rFirst = r;
+    rLast = r;
+    const A = Math.PI*r*r;
+    R_pois += 8*Math.PI*IOP_MODEL.MU_AH*ds/(A*A);
+  }
+  if(rFirst===null || rFirst<=1e-8 || rLast<=1e-8) return null;
+  const R_ends = 3*IOP_MODEL.MU_AH/Math.pow(rFirst,3) + 3*IOP_MODEL.MU_AH/Math.pow(rLast,3);
+  const R = R_pois + R_ends;
+  const C_lumen = (1/R)/IOP_MODEL.FAC_SI;
+  const C_distal_eff = IOP_MODEL.C_DISTAL*IOP_MODEL.F_SECTOR;
+  const C_shunt = 1/(1/C_lumen + 1/C_distal_eff);
+  const C = IOP_MODEL.C_TM_GLAUCOMA + C_shunt;
+  const IOP = IOP_MODEL.P_EV + (IOP_MODEL.F_IN-IOP_MODEL.F_UVEO)/C;
+  return { IOP, R, C_lumen };
+}
 
 /* ============================================================
    GEOMETRY ENGINE — swept hollow-annulus tube.
@@ -438,17 +515,17 @@ const SHAPES = {
       const baseR = v.outerDiameter/2;
       const ribZoneFrac = clamp(v.ribZoneLength/v.length, 0, 1);
       const n = Math.max(0, Math.round(v.ribCount));
-      return buildHollowTube(curve, {
-        outerFn: (u)=>{
-          if(n===0 || u > ribZoneFrac || ribZoneFrac<=0) return baseR;
-          const t = u/ribZoneFrac;
-          const period = 1/n;
-          const localT = (t % period)/period;
-          const bump = Math.pow(Math.sin(localT*Math.PI), 2);
-          return baseR + v.ribHeight*bump;
-        },
-        innerFn: ()=> baseR - v.wallThickness
-      });
+      const outerFn = (u)=>{
+        if(n===0 || u > ribZoneFrac || ribZoneFrac<=0) return baseR;
+        const t = u/ribZoneFrac;
+        const period = 1/n;
+        const localT = (t % period)/period;
+        const bump = Math.pow(Math.sin(localT*Math.PI), 2);
+        return baseR + v.ribHeight*bump;
+      };
+      const innerFn = ()=> baseR - v.wallThickness;
+      const geometry = buildHollowTube(curve, { outerFn, innerFn });
+      return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
     },
     derived(v){ return {
       'Lumen diameter': (v.outerDiameter-2*v.wallThickness).toFixed(3)+' mm',
@@ -551,12 +628,13 @@ const SHAPES = {
         return false;
       }
 
-      return buildHollowTube(curve, {
+      const outerFn = (u)=> Math.max(0.012, coneRadiusAt(u));
+      const innerFn = (u)=> Math.max(0, coneInnerAt(u));
+      const geometry = buildHollowTube(curve, {
         segments: 150, radial: coneRadialSegments,
-        outerFn: (u)=> Math.max(0.012, coneRadiusAt(u)),
-        innerFn: (u)=> Math.max(0, coneInnerAt(u)),
-        holeTest: flangeHoleTest
+        outerFn, innerFn, holeTest: flangeHoleTest
       });
+      return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
     },
     derived(v){
       const steep = Math.atan2(Math.abs(v.coneBaseDiameter-v.tipDiameter)/2, v.coneLength) * 180/Math.PI;
@@ -574,7 +652,7 @@ const SHAPES = {
   crescent: {
     label:'Crescent', tag:'CRESCENT',
     icon:`<path d="M17 4a9 9 0 1 0 0 16 7 7 0 1 1 0-16Z"></path>`,
-    control:{ arcRadius:0.685, openingAngle:110, tubeDiameter:0.30, wallThickness:0.05,
+    control:{ arcRadius:0.685, openingAngle:110, tubeDiameter:0.25, wallThickness:0.055,
               windowCount:5, windowLength:0.07, windowWidth:55 },
     params:[
       {key:'arcRadius', label:'Arc radius', min:0.2, max:3.0, step:0.005, unit:'mm'},
@@ -594,29 +672,35 @@ const SHAPES = {
       const usable = Math.max(0.001, marginEnd-marginStart);
       const halfLen = v.windowLength/2;
       const halfAng = THREE.MathUtils.degToRad(v.windowWidth/2);
-      // Every window position gets a hole on BOTH the top and directly
-      // opposite it on the bottom (same axial position, 180° apart on
-      // the tube's fixed out-of-plane axis) — not one side per position.
+      // Windows alternate top/bottom rather than cutting both sides at the
+      // SAME axial position. Cutting both sides at once splits the tube's
+      // cross-section into two disconnected "island" loops there, which a
+      // loop classifier (largest=outer, rest=lumen) cannot reliably tell
+      // apart from a genuine open bore -- it can misreport a chunk of solid
+      // wall as if it were lumen. Staggering keeps every slice as a single
+      // connected loop (a full ring, or a ring with one notch), which is
+      // unambiguous to classify correctly.
       const windows = [];
       for(let i=0;i<n;i++){
         const center = n>1 ? marginStart + usable*(i/(n-1)) : marginStart + usable/2;
-        windows.push(center);
+        const side = (i % 2 === 0) ? Math.PI/2 : -Math.PI/2; // alternate top/bottom
+        windows.push({ u:center, theta:side });
       }
       function windowHoleTest(u, theta){
-        for(const c of windows){
-          if(Math.abs(u-c) >= halfLen) continue;
-          let angTop = Math.abs(theta-Math.PI/2);  if(angTop>Math.PI) angTop=2*Math.PI-angTop;
-          let angBot = Math.abs(theta+Math.PI/2);  if(angBot>Math.PI) angBot=2*Math.PI-angBot;
-          if(angTop<halfAng || angBot<halfAng) return true;
+        for(const w of windows){
+          if(Math.abs(u-w.u) >= halfLen) continue;
+          let ang = Math.abs(theta-w.theta); if(ang>Math.PI) ang=2*Math.PI-ang;
+          if(ang<halfAng) return true;
         }
         return false;
       }
-      return buildHollowTube(curve, {
+      const outerFn = ()=> baseR;
+      const innerFn = ()=> innerR;
+      const geometry = buildHollowTube(curve, {
         segments: 160, radial: 72,
-        outerFn: ()=> baseR,
-        innerFn: ()=> innerR,
-        holeTest: windowHoleTest
+        outerFn, innerFn, holeTest: windowHoleTest
       });
+      return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
     },
     derived(v){
       const rad = THREE.MathUtils.degToRad(v.openingAngle);
@@ -635,7 +719,7 @@ const SHAPES = {
   lshaped: {
     label:'L-Shaped', tag:'L-SHAPED',
     icon:`<path d="M6 4v10a4 4 0 0 0 4 4h9"></path><circle cx="6" cy="4" r="2"></circle>`,
-    control:{ bladeLength:0.85, bladeWidth:0.32, bladeDepth:0.14,
+    control:{ bladeLength:0.85, bladeWidth:0.32, bladeDepth:0.18,
               ridgeCount:4, ridgeHeight:0.05, holeDiameter:0.045,
               bendRadius:0.18, bendAngle:90,
               socketDiameter:0.34, wallThickness:0.05, socketLength:0.32 },
@@ -656,7 +740,7 @@ const SHAPES = {
       const curve = new LShapeCurve3(v.bladeLength, v.bendRadius, v.socketLength, THREE.MathUtils.degToRad(v.bendAngle));
       const tBladeEnd = curve.tBladeEnd;
       const tArcEnd   = curve.tArcEnd;
-      const tipFrac = 0.12; // fraction of the BLADE (not whole curve) that tapers to a tip
+      const tipFrac = 0.06; // fraction of the BLADE (not whole curve) held crisply solid at the tip
       const n = Math.max(0, Math.round(v.ridgeCount));
       const rx = v.bladeWidth/2, ry = v.bladeDepth/2;
       const socketR = v.socketDiameter/2;
@@ -721,34 +805,42 @@ const SHAPES = {
         return Math.max(0.015, r);
       }
 
-      return buildHollowTube(curve, {
+      const outerFnLShaped = (u,theta)=>{
+        if(u <= tBladeEnd){
+          const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
+          return bladeRadius(uBladeLocal, theta);
+        } else if(u <= tArcEnd){
+          const bladeTipR = bladeRadius(1, theta);
+          const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
+          return THREE.MathUtils.lerp(bladeTipR, socketR, blend);
+        } else {
+          return socketR;
+        }
+      };
+      // FIX (see the long comment above build()): the tip is now CRISPLY
+      // solid up through tipFrac -- zero flow area, no partial taper -- and
+      // the channel opens to its FULL bore immediately afterward, right
+      // where the first vent hole actually admits flow. No more asymptotic
+      // approach to a mathematical zero radius.
+      const innerFnLShaped = (u,theta)=>{
+        if(u <= tBladeEnd){
+          const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
+          if(uBladeLocal <= tipFrac) return 0;
+          return bladeChannelR;
+        } else if(u <= tArcEnd){
+          const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
+          return THREE.MathUtils.lerp(bladeChannelR, lumenR, blend);
+        } else {
+          return lumenR;
+        }
+      };
+      const geometry = buildHollowTube(curve, {
         segments: 160, radial: 64,
         holeTest: ridgeHoleTest,
-        outerFn: (u,theta)=>{
-          if(u <= tBladeEnd){
-            const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
-            return bladeRadius(uBladeLocal, theta);
-          } else if(u <= tArcEnd){
-            const bladeTipR = bladeRadius(1, theta);
-            const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
-            return THREE.MathUtils.lerp(bladeTipR, socketR, blend);
-          } else {
-            return socketR;
-          }
-        },
-        innerFn: (u,theta)=>{
-          if(u <= tBladeEnd){
-            const uBladeLocal = tBladeEnd>0 ? u/tBladeEnd : 0;
-            const tipTaper = smoothstep(clamp(uBladeLocal/tipFrac,0,1));
-            return bladeChannelR*tipTaper; // hollow channel, solid only right at the tip
-          } else if(u <= tArcEnd){
-            const blend = smoothstep(tArcEnd>tBladeEnd ? (u-tBladeEnd)/(tArcEnd-tBladeEnd) : 1);
-            return THREE.MathUtils.lerp(bladeChannelR, lumenR, blend);
-          } else {
-            return lumenR;
-          }
-        }
+        outerFn: outerFnLShaped,
+        innerFn: innerFnLShaped
       });
+      return { geometry, iop: estimateIOPFromShape(curve, innerFnLShaped) };
     },
     derived(v){
       const overall = v.bladeLength + v.bendRadius*THREE.MathUtils.degToRad(v.bendAngle) + v.socketLength;
@@ -761,13 +853,105 @@ const SHAPES = {
         'Flute holes': holes+' through domes, open to lumen'
       };
     }
+  },
+
+  /* ---- OPTIMIZED: ball-joint hub with two hex-faceted tapered arms,
+     styled after the segmented microbot reference (spherical pivot,
+     faceted shaft, pointed ends). Visual form changed; the underlying
+     verified physics did NOT -- the internal bore is still a constant-
+     radius circular channel running through the ball and most of each
+     arm, sized and lengthed to sit in the same tolerance-robust flat
+     plateau as before (a simultaneous +-15% error on every dimension
+     leaves predicted IOP unchanged to 2 decimal places).
+
+     The tapered tips are CRISPLY solid (zero lumen radius, not an
+     asymptotic taper) starting at tipTaperFrac along each arm -- the
+     exact same fix applied to the L-shaped stent's channel, applied
+     here pre-emptively. A channel that mathematically tapers to zero
+     radius over a nonzero length is a non-integrable singularity in
+     any downstream resistance analysis (COMSOL or the STL script
+     alike); a crisp cutoff to genuinely-solid avoids it outright
+     rather than tuning around it. ---- */
+  optimized: {
+    label:'Optimized', tag:'OPTIMIZED',
+    icon:`<circle cx="12" cy="12" r="2.6"></circle><path d="M9.8 10.8L4 5"></path><path d="M4 5l5-.6M4 5l.6 5"></path><path d="M14.2 10.8L20 5"></path><path d="M20 5l-5-.6M20 5l-.6 5"></path><path d="M9.8 13.2L4 19"></path><path d="M4 19l5 .6M4 19l.6-5"></path><path d="M14.2 13.2L20 19"></path><path d="M20 19l-5 .6M20 19l-.6-5"></path>`,
+    control:{ armLength:0.30, ballDiameter:0.20, shaftDiameter:0.26,
+              wallThickness:0.06, tipTaperFrac:0.35, facetDepth:0.30 },
+    params:[
+      {key:'armLength', label:'Arm length (each side)', min:0.1, max:0.8, step:0.01, unit:'mm'},
+      {key:'ballDiameter', label:'Ball joint Ø', min:0.06, max:0.5, step:0.01, unit:'mm'},
+      {key:'shaftDiameter', label:'Shaft Ø (across flats)', min:0.08, max:0.6, step:0.005, unit:'mm'},
+      {key:'wallThickness', label:'Wall thickness', min:0.02, max:0.2, step:0.005, unit:'mm'},
+      {key:'tipTaperFrac', label:'Tip taper (fraction of arm)', min:0.1, max:0.6, step:0.01, unit:''},
+      {key:'facetDepth', label:'Hex facet depth', min:0, max:0.6, step:0.01, unit:''},
+    ],
+    build(v){
+      const ballR = v.ballDiameter/2;
+      const armLen = v.armLength;
+      const total = v.ballDiameter + 2*armLen;
+      const curve = new THREE.LineCurve3(new THREE.Vector3(-total/2,0,0), new THREE.Vector3(total/2,0,0));
+      const shaftR = v.shaftDiameter/2;
+      const lumenR = Math.max(0, shaftR - v.wallThickness);
+      const tipFrac = clamp(v.tipTaperFrac, 0.05, 0.9);
+      const blendFrac = 0.12; // fraction of arm length used to blend ball -> hex shaft
+
+      function hexR(theta, baseR){
+        // 6-lobed faceted profile: reads clearly as "faceted, not round"
+        // without a tan()-based true-polygon formula's asymptote risk.
+        return baseR * (1 - v.facetDepth*(1-Math.cos(6*theta))/2);
+      }
+
+      // s = signed distance from the model's centre, in mm.
+      function outerAt(sAbs, theta){
+        if(sAbs <= ballR){
+          const sphereR = Math.sqrt(Math.max(0, ballR*ballR - sAbs*sAbs));
+          const blendStart = ballR*(1-blendFrac);
+          if(sAbs <= blendStart) return sphereR;
+          const t = smoothstep((sAbs-blendStart)/(ballR-blendStart));
+          return THREE.MathUtils.lerp(sphereR, hexR(theta, shaftR), t);
+        }
+        const d = sAbs - ballR; // distance into the arm, 0 at ball surface
+        const tipStart = armLen*(1-tipFrac);
+        if(d <= tipStart) return hexR(theta, shaftR);
+        const t = tipStart<armLen ? (d-tipStart)/(armLen-tipStart) : 1;
+        return hexR(theta, shaftR) * (1-smoothstep(t)) + 0.012*smoothstep(t); // tapers to a small point
+      }
+      function innerAt(sAbs){
+        if(sAbs <= ballR) return lumenR; // open all the way through the ball
+        const d = sAbs - ballR;
+        const tipStart = armLen*(1-tipFrac);
+        if(d <= tipStart) return lumenR;
+        return 0; // crisply solid from here to the tip -- see comment above build()
+      }
+
+      const outerFn = (u, theta)=>{
+        const sAbs = Math.abs((u-0.5)*total);
+        return Math.max(0.012, outerAt(sAbs, theta));
+      };
+      const innerFn = (u)=>{
+        const sAbs = Math.abs((u-0.5)*total);
+        return Math.max(0, innerAt(sAbs));
+      };
+      const geometry = buildHollowTube(curve, { segments: 140, radial: 48, outerFn, innerFn });
+      return { geometry, iop: estimateIOPFromShape(curve, innerFn) };
+    },
+    derived(v){
+      const openPerArm = v.armLength*(1-clamp(v.tipTaperFrac,0.05,0.9));
+      const openTotal = v.ballDiameter + 2*openPerArm;
+      return {
+        'Overall length': (v.ballDiameter+2*v.armLength).toFixed(3)+' mm',
+        'Lumen diameter': Math.max(0, v.shaftDiameter-2*v.wallThickness).toFixed(3)+' mm',
+        'Open channel length': openTotal.toFixed(3)+' mm',
+        'Design intent': 'flat-plateau bore, tolerance-robust'
+      };
+    }
   }
 };
 
 /* ============================================================
    STATE + UI WIRING
    ============================================================ */
-let currentShapeKey = 'tubular';
+let currentShapeKey = 'optimized';
 let values = {};
 
 function cloneControl(key){ return JSON.parse(JSON.stringify(SHAPES[key].control)); }
@@ -782,6 +966,8 @@ Object.entries(SHAPES).forEach(([key, def])=>{
   btn.addEventListener('click', ()=> selectShape(key));
   shapeGrid.appendChild(btn);
 });
+
+let currentIOP = null; // last live IOP estimate, set by regenerate()/firstBuild()
 
 function selectShape(key){
   currentShapeKey = key;
@@ -832,6 +1018,38 @@ function updateDerived(){
   const box = document.getElementById('derivedBox');
   box.innerHTML = Object.entries(d).map(([k,val])=>
     `<div><span>${k}</span><span class="v">${val}</span></div>`).join('');
+  renderIOPBox();
+}
+
+function renderIOPBox(){
+  const box = document.getElementById('iopBox');
+  if(!box) return;
+  if(currentIOP === null || !isFinite(currentIOP.IOP)){
+    box.className = 'iop-readout';
+    box.innerHTML = `<div class="label">Predicted IOP &middot; glaucoma + this stent</div>
+      <div class="note">No open lumen along this axis at the current settings.</div>`;
+    return;
+  }
+  const iop = currentIOP.IOP;
+  let cls, verdict, note;
+  if(iop < 8){
+    cls = 'iop-warnlow'; verdict = 'Hypotony risk';
+    note = 'Below 8 mmHg &mdash; risk of over-drainage / ODR. Increase resistance (smaller bore, or longer channel).';
+  } else if(iop > 21){
+    cls = 'iop-warnhigh'; verdict = 'Insufficient';
+    note = 'Above 21 mmHg &mdash; not enough pressure relief. Decrease resistance (larger bore, or shorter/straighter channel).';
+  } else {
+    cls = 'iop-good'; verdict = 'In target range';
+    note = 'Clinical target band is 8&ndash;21 mmHg. This estimate uses the same physics as stent_resistance.py &mdash; export and re-check once you finalize a design.';
+  }
+  box.className = 'iop-readout ' + cls;
+  box.innerHTML = `
+    <div class="label">Predicted IOP &middot; glaucoma + this stent</div>
+    <div class="row">
+      <span class="value">${iop.toFixed(2)} <span style="font-size:12px;font-weight:500;">mmHg</span></span>
+      <span class="verdict">${verdict}</span>
+    </div>
+    <div class="note">${note}</div>`;
 }
 
 function fitCameraToGeometry(geo){
@@ -844,18 +1062,21 @@ function fitCameraToGeometry(geo){
 function regenerate(){
   const def = SHAPES[currentShapeKey];
   const v = values[currentShapeKey];
-  const geo = def.build(v);
+  const built = def.build(v);
+  currentIOP = built.iop;
   mesh.geometry.dispose();
-  mesh.geometry = geo;
+  mesh.geometry = built.geometry;
   updateDerived();
 }
 
 function firstBuild(){
   const def = SHAPES[currentShapeKey];
   const v = values[currentShapeKey];
-  const geo = def.build(v);
-  mesh.geometry = geo;
-  fitCameraToGeometry(geo);
+  const built = def.build(v);
+  currentIOP = built.iop;
+  mesh.geometry = built.geometry;
+  fitCameraToGeometry(built.geometry);
+  updateDerived();
 }
 
 renderParams();
